@@ -11,9 +11,9 @@ class AnnouncementCard extends StatelessWidget {
   final VoidCallback? onTap;
 
   String get _scopeLabel => switch (item.scope) {
-    ScopeType.universite => 'Universite',
-    ScopeType.fakulte => 'Fakulte',
-    ScopeType.bolum => 'Bolum',
+    ScopeType.universite => 'Üniversite',
+    ScopeType.fakulte => 'Fakülte',
+    ScopeType.bolum => 'Bölüm',
     ScopeType.ders => 'Ders',
   };
 

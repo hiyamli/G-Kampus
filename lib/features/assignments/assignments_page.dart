@@ -34,7 +34,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
             delegate: SliverChildListDelegate([
               const HeroCard(
                 compact: true,
-                title: 'Odevler',
+                title: 'Ödevler',
                 subtitle:
                     'Aktif, tamamlanan ve geciken teslimleri tek listede yonet.',
                 badges: [

@@ -11,23 +11,16 @@ import 'chat_page.dart';
 import 'create_group_page.dart';
 import 'direct_message_page.dart';
 
-Future<void> showGroupsSheet(BuildContext context) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (context) => const _GroupsSheet(),
-  );
-}
+class MessagesPage extends StatefulWidget {
+  const MessagesPage({super.key, this.onDataChanged});
 
-class _GroupsSheet extends StatefulWidget {
-  const _GroupsSheet();
+  final VoidCallback? onDataChanged;
 
   @override
-  State<_GroupsSheet> createState() => _GroupsSheetState();
+  State<MessagesPage> createState() => _MessagesPageState();
 }
 
-class _GroupsSheetState extends State<_GroupsSheet> {
+class _MessagesPageState extends State<MessagesPage> {
   bool expanded = false;
 
   Future<void> _openDirectMessage() async {
@@ -36,6 +29,7 @@ class _GroupsSheetState extends State<_GroupsSheet> {
     );
     if (created != null) {
       setState(() => appRepository.groups.insert(0, created));
+      widget.onDataChanged?.call();
     }
   }
 
@@ -45,73 +39,47 @@ class _GroupsSheetState extends State<_GroupsSheet> {
     );
     if (created != null) {
       setState(() => appRepository.groups.insert(0, created));
+      widget.onDataChanged?.call();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: MediaQuery.of(context).size.height * 0.86,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Stack(
+    return Stack(
+      children: [
+        ListView(
+          padding: const EdgeInsets.fromLTRB(0, 16, 0, 120),
           children: [
-            ListView(
-              children: [
-                Row(
-                  children: [
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        size: 18,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Expanded(
-                      child: SectionHeader(
-                        title: 'Mesaj Kutusu',
-                        subtitle: 'Gruplar ve direkt mesajlar',
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ...appRepository.groups.map(
-                  (group) => _GroupCard(group: group),
-                ),
-              ],
+            const SectionHeader(
+              title: 'DM Kutusu',
+              subtitle: 'Gruplar ve direkt mesajlar',
             ),
-            Positioned(
-              right: 0,
-              bottom: 0,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (expanded) ...[
-                    _ActionBubble(
-                      label: 'Mesaj Gönder',
-                      onTap: _openDirectMessage,
-                    ),
-                    const SizedBox(height: 10),
-                    _ActionBubble(
-                      label: 'Grup Olustur',
-                      onTap: _openCreateGroup,
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  FloatingActionButton(
-                    onPressed: () => setState(() => expanded = !expanded),
-                    child: Icon(
-                      expanded ? CupertinoIcons.xmark : CupertinoIcons.add,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            const SizedBox(height: 14),
+            ...appRepository.groups.map((group) => _GroupCard(group: group)),
           ],
         ),
-      ),
+        Positioned(
+          right: 0,
+          bottom: 74,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (expanded) ...[
+                _ActionBubble(label: 'Mesaj Gönder', onTap: _openDirectMessage),
+                const SizedBox(height: 10),
+                _ActionBubble(label: 'Grup Olustur', onTap: _openCreateGroup),
+                const SizedBox(height: 10),
+              ],
+              FloatingActionButton(
+                onPressed: () => setState(() => expanded = !expanded),
+                child: Icon(
+                  expanded ? CupertinoIcons.xmark : CupertinoIcons.add,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -217,8 +185,6 @@ class _ActionBubble extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const TagBadge(label: 'Aksiyon', variant: TagBadgeVariant.accent),
-              const SizedBox(width: 10),
               Text(label, style: Theme.of(context).textTheme.labelLarge),
             ],
           ),

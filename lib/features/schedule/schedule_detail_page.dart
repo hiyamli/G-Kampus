@@ -64,7 +64,7 @@ class ScheduleDetailPage extends StatelessWidget {
                   children: [
                     SizedBox(
                       width: double.infinity,
-                      child: infoCard('Sinif', item.location),
+                      child: infoCard('Sınıf', item.location),
                     ),
                     const SizedBox(height: 12),
                     SizedBox(

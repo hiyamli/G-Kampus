@@ -9,6 +9,7 @@ class InputField extends StatelessWidget {
     this.controller,
     this.maxLines = 1,
     this.enabled = true,
+    this.suffixIcon,
   });
 
   final String hint;
@@ -17,6 +18,7 @@ class InputField extends StatelessWidget {
   final TextEditingController? controller;
   final int maxLines;
   final bool enabled;
+  final Widget? suffixIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -28,6 +30,7 @@ class InputField extends StatelessWidget {
       decoration: InputDecoration(
         hintText: hint,
         prefixIcon: Icon(icon, size: 20),
+        suffixIcon: suffixIcon,
       ),
     );
   }

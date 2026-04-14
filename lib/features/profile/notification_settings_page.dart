@@ -16,8 +16,8 @@ class NotificationSettingsPage extends StatefulWidget {
 class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   final Map<String, bool> toggles = {
     'Yeni duyurular': true,
-    'Yaklasan dersler': true,
-    'Yaklasan odevler': true,
+    'Yaklaşan dersler': true,
+    'Yaklaşan ödevler': true,
     'Grup mesajlari': true,
     'Yemekhane menusu': false,
     'Etkinlik hatirlatmalari': true,

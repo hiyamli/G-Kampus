@@ -91,7 +91,7 @@ class ProfilePage extends StatelessWidget {
                               ),
                               const SizedBox(height: 6),
                               const TagBadge(
-                                label: 'Ogrenci',
+                                label: 'Öğrenci',
                                 variant: TagBadgeVariant.accent,
                               ),
                               const SizedBox(height: 8),
@@ -129,7 +129,7 @@ class ProfilePage extends StatelessWidget {
                       children: [
                         TagBadge(
                           label:
-                              '${appRepository.student.courseCount} kayitli ders',
+                              '${appRepository.student.courseCount} kayıtli ders',
                           variant: TagBadgeVariant.unread,
                         ),
                         const TagBadge(
@@ -174,7 +174,7 @@ class ProfilePage extends StatelessWidget {
               ),
               const SizedBox(height: 22),
               Text(
-                'Kayitli Dersler',
+                'Kayıtli Dersler',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 12),
@@ -202,7 +202,7 @@ class ProfilePage extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               _SettingsTile(
-                title: 'Ders Hatirlatmalari',
+                title: 'Ders Hatırlatmalari',
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => const ReminderSettingsPage(),
@@ -231,7 +231,7 @@ class ProfilePage extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: onLogout,
                 icon: const Icon(Icons.logout_rounded),
-                label: const Text('Cikis Yap'),
+                label: const Text('Çıkış Yap'),
               ),
             ]),
           ),

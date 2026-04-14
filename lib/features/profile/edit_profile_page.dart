@@ -59,9 +59,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 const HeroCard(
-                  title: 'Profili Duzenle',
+                  title: 'Profili Düzenle',
                   subtitle:
-                      'Avatar sec, biyografini guncelle ve profil tonunu ayarla.',
+                      'Avatar sec, biyografini güncelle ve profil tonunu ayarla.',
                   badges: [HeroCardBadge(label: '4 avatar secenegi')],
                 ),
                 const SizedBox(height: 18),

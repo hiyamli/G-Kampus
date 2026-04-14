@@ -20,7 +20,7 @@ class AcademicCalendarPage extends StatelessWidget {
                 const HeroCard(
                   title: 'Akademik Takvim',
                   subtitle: 'Donemin kritik tarihleri ve zaman araliklari.',
-                  badges: [HeroCardBadge(label: '3 onemli baslik')],
+                  badges: [HeroCardBadge(label: '3 önemli baslik')],
                 ),
                 const SizedBox(height: 18),
                 ...appRepository.calendarEvents.map(

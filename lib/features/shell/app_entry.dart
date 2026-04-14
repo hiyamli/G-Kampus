@@ -18,8 +18,9 @@ class _KampusAppState extends State<KampusApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      key: ValueKey(authenticated),
       debugShowCheckedModeBanner: false,
-      title: 'Kampusapp',
+      title: 'G Kampüs',
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: themeMode,

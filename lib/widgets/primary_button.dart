@@ -31,7 +31,7 @@ class PrimaryButton extends StatelessWidget {
             backgroundColor: Colors.transparent,
             shadowColor: Colors.transparent,
             foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
             shape: RoundedRectangleBorder(borderRadius: AppRadius.card22),
           ),
           child: Row(
@@ -40,7 +40,7 @@ class PrimaryButton extends StatelessWidget {
               Text(label),
               if (icon != null) ...[
                 const SizedBox(width: 10),
-                Icon(icon, size: 18),
+                Icon(icon, size: 16),
               ],
             ],
           ),

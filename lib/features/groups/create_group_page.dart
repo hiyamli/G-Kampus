@@ -56,11 +56,12 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     appRepository.groupMembers[created.name] = members;
     appRepository.conversationMessages[created.name] = [
       ChatMessage(
-        sender: 'Zeynep',
+        sender: 'Sistem',
         message:
             '${topicController.text.trim().isEmpty ? 'Yeni grup' : topicController.text.trim()} olusturuldu.',
         time: TimeOfDay.now().format(context),
-        isMe: true,
+        isMe: false,
+        isSystem: true,
       ),
     ];
     appRepository.unreadConversationCounts[created.name] = 0;
@@ -79,7 +80,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
               delegate: SliverChildListDelegate([
                 const HeroCard(
                   title: 'Grup Olustur',
-                  subtitle: 'Konu belirle, uyeleri sec ve akisi hemen baslat.',
+                  subtitle: 'Konu belirle, uyeleri sec ve akışı hemen baslat.',
                   badges: [HeroCardBadge(label: 'Study group')],
                 ),
                 const SizedBox(height: 18),

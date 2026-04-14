@@ -23,9 +23,9 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
     final items = appRepository.announcements.where((item) {
       if (filter == 'Tumu') return true;
       final scopeMap = <String, ScopeType>{
-        'Universite': ScopeType.universite,
-        'Fakulte': ScopeType.fakulte,
-        'Bolum': ScopeType.bolum,
+        'Üniversite': ScopeType.universite,
+        'Fakülte': ScopeType.fakulte,
+        'Bölüm': ScopeType.bolum,
         'Ders': ScopeType.ders,
       };
       return item.scope == scopeMap[filter];
@@ -41,11 +41,11 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
                 compact: true,
                 title: 'Duyurular',
                 subtitle:
-                    'Resmi akislari scope bazli filtrele ve yeni guncellemeleri kacirma.',
+                    'Resmi akislari scope bazli filtrele ve yeni güncellemeleri kacirma.',
                 badges: [
                   HeroCardBadge(label: '2 yeni'),
                   HeroCardBadge(
-                    label: 'Ders + bolum',
+                    label: 'Ders + bölüm',
                     variant: TagBadgeVariant.accent,
                   ),
                 ],
@@ -54,7 +54,7 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
-                  children: ['Tumu', 'Universite', 'Fakulte', 'Bolum', 'Ders']
+                  children: ['Tumu', 'Üniversite', 'Fakülte', 'Bölüm', 'Ders']
                       .map(
                         (scope) => Padding(
                           padding: const EdgeInsets.only(right: 10),

@@ -354,6 +354,7 @@ class ChatMessage {
     required this.isMe,
     this.replyTo,
     this.attachment,
+    this.isSystem = false,
   });
 
   final String sender;
@@ -362,6 +363,7 @@ class ChatMessage {
   final bool isMe;
   final String? replyTo;
   final String? attachment;
+  final bool isSystem;
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     return ChatMessage(
@@ -371,6 +373,7 @@ class ChatMessage {
       isMe: json['isMe'] as bool,
       replyTo: json['replyTo'] as String?,
       attachment: json['attachment'] as String?,
+      isSystem: json['isSystem'] as bool? ?? false,
     );
   }
 
@@ -382,6 +385,7 @@ class ChatMessage {
       'isMe': isMe,
       'replyTo': replyTo,
       'attachment': attachment,
+      'isSystem': isSystem,
     };
   }
 }

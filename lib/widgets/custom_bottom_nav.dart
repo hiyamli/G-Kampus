@@ -5,12 +5,14 @@ class CustomBottomNav extends StatelessWidget {
     super.key,
     required this.index,
     required this.onSelected,
+    required this.dmBadge,
     required this.assignmentBadge,
     required this.announcementBadge,
   });
 
   final int index;
   final ValueChanged<int> onSelected;
+  final int dmBadge;
   final int assignmentBadge;
   final int announcementBadge;
 
@@ -25,11 +27,8 @@ class CustomBottomNav extends StatelessWidget {
           label: 'Ana Sayfa',
         ),
         NavigationDestination(
-          icon: _NavIcon(
-            icon: Icons.assignment_rounded,
-            badge: assignmentBadge,
-          ),
-          label: 'Odevler',
+          icon: _NavIcon(icon: Icons.chat_bubble_rounded, badge: dmBadge),
+          label: 'DM Kutusu',
         ),
         NavigationDestination(
           icon: Icon(Icons.view_week_rounded),
@@ -37,14 +36,17 @@ class CustomBottomNav extends StatelessWidget {
         ),
         NavigationDestination(
           icon: _NavIcon(
+            icon: Icons.assignment_rounded,
+            badge: assignmentBadge,
+          ),
+          label: 'Ödevler',
+        ),
+        NavigationDestination(
+          icon: _NavIcon(
             icon: Icons.campaign_rounded,
             badge: announcementBadge,
           ),
           label: 'Duyurular',
-        ),
-        NavigationDestination(
-          icon: Icon(Icons.grid_view_rounded),
-          label: 'More',
         ),
       ],
     );

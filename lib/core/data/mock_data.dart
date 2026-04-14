@@ -8,11 +8,11 @@ class MockData {
     name: 'Zeynep Kaya',
     number: '220401092',
     department: 'Yazilim Muhendisligi',
-    grade: '3. Sinif',
+    grade: '3. Sınıf',
     gpa: '3.42 / 4.00',
     bio:
         'Mobil urunler, kampus topluluklari ve deneyim tasarimi ile ilgileniyorum. Bu donem proje ve study group odakli bir rutinim var.',
-    role: 'Ogrenci',
+    role: 'Öğrenci',
     courseCount: 4,
     notificationsEnabled: true,
   );
@@ -68,7 +68,7 @@ class MockData {
       title: 'UI Design Project',
       course: 'UI Design Studio',
       description:
-          'Final mobil ekran setini, component aciklamalari ve mini case dokumani ile teslim et.',
+          'Final mobil ekran setini, component aciklamalari ve mini case dokümani ile teslim et.',
       deadline: '28 Nisan, 23:59',
       timeLeft: '2 gun',
       status: 'Aktif',
@@ -81,7 +81,7 @@ class MockData {
       title: 'API katmani mini raporu',
       course: 'Mobil Programlama',
       description:
-          'Authentication, state akisi ve hata yonetimini 2 sayfalik ozetle acikla.',
+          'Authentication, state akışı ve hata yonetimini 2 sayfalik ozetle acikla.',
       deadline: '30 Nisan, 18:00',
       timeLeft: '4 gun',
       status: 'Aktif',
@@ -106,7 +106,7 @@ class MockData {
     AssignmentItem(
       title: 'Routing demo teslimi',
       course: 'Mobil Programlama',
-      description: 'Bottom nav ve detail akisini iceren mini demo uygulama.',
+      description: 'Bottom nav ve detail akışıni iceren mini demo uygulama.',
       deadline: '18 Nisan, 17:00',
       timeLeft: 'Teslim edildi',
       status: 'Tamamlandi',
@@ -119,7 +119,7 @@ class MockData {
 
   static const announcements = [
     AnnouncementItem(
-      title: 'Bahar Senligi kayitlari acildi',
+      title: 'Bahar Senligi kayıtlari açıldı',
       description:
           'Kulup stantlari, muzik etkinlikleri ve gonullu ekip basvurulari kampus portalinda yayinda.',
       scope: ScopeType.universite,
@@ -127,7 +127,7 @@ class MockData {
       isNew: true,
     ),
     AnnouncementItem(
-      title: 'Fakulte laboratuvar saatleri guncellendi',
+      title: 'Fakülte laboratuvar saatleri güncellendi',
       description:
           'Hafta ici laboratuvar acilis-kapanis saatleri yeni donem yogunluguna gore yenilendi.',
       scope: ScopeType.fakulte,
@@ -143,7 +143,7 @@ class MockData {
       isNew: false,
     ),
     AnnouncementItem(
-      title: 'Bolum semineri',
+      title: 'Bölüm semineri',
       description:
           'Yapay zeka urun ekiplerinden konusmacilarla seminer cuma gunu konferans salonunda.',
       scope: ScopeType.bolum,
@@ -154,7 +154,7 @@ class MockData {
 
   static const calendarEvents = [
     CalendarEvent(
-      title: 'Ders kayit yenileme haftasi',
+      title: 'Ders kayıt yenileme haftasi',
       range: '01 Mayis - 05 Mayis',
       color: AppColors.teal,
     ),
@@ -180,7 +180,7 @@ class MockData {
       isDirect: false,
     ),
     GroupItem(
-      name: 'Yazilim 3. Sinif',
+      name: 'Yazilim 3. Sınıf',
       memberCount: '3 uye',
       muted: true,
       color: AppColors.sunrise,
@@ -200,14 +200,14 @@ class MockData {
 
   static final unreadConversationCounts = <String, int>{
     'Mobile Dev Study Group': 2,
-    'Yazilim 3. Sinif': 1,
+    'Yazilim 3. Sınıf': 1,
     'Campus Runners': 0,
   };
 
   static final chatMessages = [
     ChatMessage(
       sender: 'Ece',
-      message: 'Sunum akisini tamamladim, son ekranlara bir bakabilir misiniz?',
+      message: 'Sunum akışıni tamamladim, son ekranlara bir bakabilir misiniz?',
       time: '09:18',
       isMe: false,
       attachment: 'wireframes.pdf',
@@ -217,11 +217,11 @@ class MockData {
       message: 'Bakiyorum, tasarim dilini tum tablarda ayni tutmak istiyorum.',
       time: '09:21',
       isMe: true,
-      replyTo: 'Sunum akisini tamamladim, son ekranlara bir bakabilir misiniz?',
+      replyTo: 'Sunum akışıni tamamladim, son ekranlara bir bakabilir misiniz?',
     ),
     ChatMessage(
       sender: 'Mert',
-      message: 'Aksam test grubunda son buildi deneyelim.',
+      message: 'Akşam test grubunda son buildi deneyelim.',
       time: '09:24',
       isMe: false,
     ),
@@ -229,10 +229,10 @@ class MockData {
 
   static final conversationMessages = <String, List<ChatMessage>>{
     'Mobile Dev Study Group': List<ChatMessage>.from(chatMessages),
-    'Yazilim 3. Sinif': [
+    'Yazilim 3. Sınıf': [
       const ChatMessage(
         sender: 'Deniz',
-        message: 'Yarin algoritma quizinden sonra sinif toplantisi var.',
+        message: 'Yarin algoritma quizinden sonra sınıf toplantisi var.',
         time: '11:05',
         isMe: false,
       ),
@@ -246,7 +246,7 @@ class MockData {
     'Campus Runners': [
       const ChatMessage(
         sender: 'Selin',
-        message: 'Aksam 19:00 pistte bulusalim mi?',
+        message: 'Akşam 19:00 pistte buluşalım mi?',
         time: '17:42',
         isMe: false,
       ),
@@ -261,7 +261,7 @@ class MockData {
 
   static final groupMembers = <String, List<StudentOption>>{
     'Mobile Dev Study Group': students,
-    'Yazilim 3. Sinif': [students[0], students[2], students[3]],
+    'Yazilim 3. Sınıf': [students[0], students[2], students[3]],
     'Campus Runners': [students[0], students[3]],
   };
 
@@ -269,7 +269,7 @@ class MockData {
     StudentOption(
       name: 'Deniz Karaca',
       number: '220401044',
-      role: 'Sinif Temsilcisi',
+      role: 'Sınıf Temsilcisi',
     ),
     StudentOption(name: 'Ece Tunc', number: '220401051', role: 'Tasarim Ekibi'),
     StudentOption(
@@ -277,7 +277,7 @@ class MockData {
       number: '220401066',
       role: 'Mobil Gelistirici',
     ),
-    StudentOption(name: 'Selin Aras', number: '220401073', role: 'Kulup Uyesi'),
+    StudentOption(name: 'Selin Aras', number: '220401073', role: 'Kulup Üyesi'),
   ];
 
   static const menuItems = [

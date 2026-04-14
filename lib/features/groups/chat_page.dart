@@ -59,8 +59,8 @@ class _ChatPageState extends State<ChatPage> {
       department: appRepository.student.department,
       grade: appRepository.student.grade,
       gpa: appRepository.student.gpa,
-      bio: '${widget.group.name} ile dogrudan iletisim profili.',
-      role: option?.role ?? 'Ogrenci',
+      bio: '${widget.group.name} ile doğrudan iletişim profili.',
+      role: option?.role ?? 'Öğrenci',
       courseCount: appRepository.student.courseCount,
       notificationsEnabled: true,
     );
@@ -147,7 +147,7 @@ class _ChatPageState extends State<ChatPage> {
       color: Colors.white.withValues(alpha: 0.98),
       items: const [
         PopupMenuItem(value: 'reply', child: Text('Mesaj Cevapla')),
-        PopupMenuItem(value: 'forward', child: Text('Mesaj Ilet')),
+        PopupMenuItem(value: 'forward', child: Text('Mesaj İlet')),
       ],
     );
 
@@ -155,10 +155,37 @@ class _ChatPageState extends State<ChatPage> {
       setState(() => replyTo = message.message);
     }
     if (selected == 'forward' && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mesaj iletme akisi hazirlandi.')),
-      );
+      await _showForwardSheet(message);
     }
+  }
+
+  Future<void> _showForwardSheet(ChatMessage sourceMessage) async {
+    final target = await showModalBottomSheet<GroupItem>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => _ForwardMessageSheet(
+        currentGroupName: widget.group.name,
+        groups: appRepository.groups,
+      ),
+    );
+
+    if (target == null || !mounted) return;
+
+    final forwarded = ChatMessage(
+      sender: 'Zeynep',
+      message: sourceMessage.message,
+      time: TimeOfDay.now().format(context),
+      isMe: true,
+      attachment: sourceMessage.attachment,
+    );
+
+    final existing =
+        appRepository.conversationMessages[target.name] ?? <ChatMessage>[];
+    appRepository.conversationMessages[target.name] = [...existing, forwarded];
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Mesaj ${target.name} sohbetine iletildi.')),
+    );
   }
 
   @override
@@ -219,11 +246,17 @@ class _ChatPageState extends State<ChatPage> {
             child: ListView.separated(
               controller: scrollController,
               padding: const EdgeInsets.only(bottom: 18),
-              itemBuilder: (context, index) => GestureDetector(
-                onLongPressStart: (details) =>
-                    _showMessageActions(details, messages[index]),
-                child: _MessageBubble(message: messages[index]),
-              ),
+              itemBuilder: (context, index) {
+                final message = messages[index];
+                if (message.isSystem) {
+                  return _MessageBubble(message: message);
+                }
+                return GestureDetector(
+                  onLongPressStart: (details) =>
+                      _showMessageActions(details, message),
+                  child: _MessageBubble(message: message),
+                );
+              },
               separatorBuilder: (context, index) => const SizedBox(height: 12),
               itemCount: messages.length,
             ),
@@ -348,6 +381,22 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (message.isSystem) {
+      return Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.58),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            message.message,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+      );
+    }
+
     final alignment = message.isMe
         ? CrossAxisAlignment.end
         : CrossAxisAlignment.start;
@@ -451,6 +500,80 @@ class _MessageSearchSheet extends StatefulWidget {
 
   @override
   State<_MessageSearchSheet> createState() => _MessageSearchSheetState();
+}
+
+class _ForwardMessageSheet extends StatelessWidget {
+  const _ForwardMessageSheet({
+    required this.currentGroupName,
+    required this.groups,
+  });
+
+  final String currentGroupName;
+  final List<GroupItem> groups;
+
+  @override
+  Widget build(BuildContext context) {
+    final targets = groups
+        .where((group) => group.name != currentGroupName)
+        .toList();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+      child: GlassCard(
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.56,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Kime ileteceksin?',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 12),
+              if (targets.isEmpty)
+                Text(
+                  'İletilecek başka sohbet bulunamadı.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                )
+              else
+                Expanded(
+                  child: ListView.separated(
+                    itemBuilder: (context, index) {
+                      final group = targets[index];
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                        ),
+                        leading: CircleAvatar(
+                          backgroundColor: group.color.withValues(alpha: 0.18),
+                          child: Icon(
+                            group.isDirect
+                                ? CupertinoIcons.person_fill
+                                : CupertinoIcons.person_3_fill,
+                            color: AppColors.ink,
+                            size: 18,
+                          ),
+                        ),
+                        title: Text(group.name),
+                        subtitle: Text(group.memberCount),
+                        trailing: const Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          size: 14,
+                        ),
+                        onTap: () => Navigator.of(context).pop(group),
+                      );
+                    },
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 6),
+                    itemCount: targets.length,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _MessageSearchSheetState extends State<_MessageSearchSheet> {

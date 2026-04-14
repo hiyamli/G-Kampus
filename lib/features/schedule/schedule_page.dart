@@ -43,7 +43,7 @@ class _SchedulePageState extends State<SchedulePage> {
                 compact: true,
                 title: 'Program',
                 subtitle:
-                    'Haftalik ders akisi, sinav takvimi ve akademik ajanda tek yerde.',
+                    'Haftalik ders akışı, sinav takvimi ve akademik ajanda tek yerde.',
                 badges: [
                   HeroCardBadge(label: 'Bu hafta 8 oturum'),
                   HeroCardBadge(
@@ -72,7 +72,7 @@ class _SchedulePageState extends State<SchedulePage> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Donem tarihleri ve onemli araliklar',
+                              'Donem tarihleri ve önemli araliklar',
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
                           ],

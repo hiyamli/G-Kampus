@@ -44,7 +44,7 @@ class PublicProfilePage extends StatelessWidget {
                   const HeroCard(
                     title: 'Public Profile',
                     subtitle:
-                        'Kampus icinde gorunen profil ozeti ve iletisim aksiyonlari.',
+                        'Kampüs icinde gorunen profil ozeti ve iletişim aksiyonlari.',
                     badges: [HeroCardBadge(label: 'Acik profil')],
                   ),
                   const SizedBox(height: 18),
@@ -89,7 +89,7 @@ class PublicProfilePage extends StatelessWidget {
                             const SizedBox(width: 10),
                             Expanded(
                               child: _InfoCard(
-                                title: 'Sinif',
+                                title: 'Sınıf',
                                 value: profile.grade,
                               ),
                             ),
@@ -120,12 +120,12 @@ class PublicProfilePage extends StatelessWidget {
                         ],
                       ] else
                         PrimaryButton(
-                          label: 'Mesaj Gonder',
+                          label: 'Mesaj Gönder',
                           onTap: () =>
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text(
-                                    'Direkt mesaj akisi baslatildi.',
+                                    'Direkt mesaj akışı baslatildi.',
                                   ),
                                 ),
                               ),

@@ -42,7 +42,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
   void _uploadDocument() {
     if (currentItem.isOverdue && !currentItem.isCompleted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tarihi gecmis odev duzenlenemez.')),
+        const SnackBar(content: Text('Tarihi gecmis ödev düzenlenemez.')),
       );
       return;
     }
@@ -61,7 +61,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
   void _submitAssignment() {
     if (currentItem.isOverdue && !currentItem.isCompleted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tarihi gecmis odev gonderilemez.')),
+        const SnackBar(content: Text('Tarihi gecmis ödev gönderilemez.')),
       );
       return;
     }
@@ -69,7 +69,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
     if (currentItem.documentInfo == null) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Once bir dokuman yukle.')));
+      ).showSnackBar(const SnackBar(content: Text('Once bir doküman yukle.')));
       return;
     }
 
@@ -88,7 +88,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
 
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Odev gonderildi.')));
+    ).showSnackBar(const SnackBar(content: Text('Ödev gönderildi.')));
 
     Future<void>.delayed(const Duration(milliseconds: 250), () {
       if (mounted) {
@@ -159,7 +159,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
                             : CupertinoIcons.check_mark_circled_solid,
                         text:
                             currentItem.documentInfo ??
-                            'Henuz dokuman yuklenmedi.',
+                            'Henüz doküman yüklenmedi.',
                         color: currentItem.documentInfo == null
                             ? AppColors.sunrise
                             : AppColors.teal,
@@ -201,7 +201,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
                                 onPressed: () =>
                                     setState(() => editingCompleted = true),
                                 icon: const Icon(CupertinoIcons.pencil_outline),
-                                label: const Text('Odevi Duzenle'),
+                                label: const Text('Ödevi Düzenle'),
                               ),
                             ),
                           ],
@@ -215,7 +215,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
                           child: PrimaryButton(
                             label: canEditCompleted
                                 ? 'Guncellemeyi Kaydet'
-                                : 'Odevi Gonder',
+                                : 'Ödevi Gönder',
                             onTap: _submitAssignment,
                           ),
                         ),
@@ -224,21 +224,21 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
                       if (submitted)
                         const InfoStrip(
                           icon: CupertinoIcons.check_mark_circled_solid,
-                          text: 'Odev basariyla gonderildi.',
+                          text: 'Ödev basariyla gönderildi.',
                           color: AppColors.teal,
                         )
                       else if (currentItem.isOverdue)
                         const InfoStrip(
                           icon: CupertinoIcons.exclamationmark_triangle_fill,
                           text:
-                              'Bu teslim gecikti. Gonderim yapildiginda gec teslim olarak isaretlenecektir.',
+                              'Bu teslim gecikti. Gönderim yapildiginda gec teslim olarak isaretlenecektir.',
                           color: AppColors.coral,
                         )
                       else
                         const InfoStrip(
                           icon: CupertinoIcons.check_mark_circled_solid,
                           text:
-                              'Belgeler tamam oldugunda dogrudan bu panelden teslim edebilirsin.',
+                              'Belgeler tamam oldugunda doğrudan bu panelden teslim edebilirsin.',
                           color: AppColors.teal,
                         ),
                     ],

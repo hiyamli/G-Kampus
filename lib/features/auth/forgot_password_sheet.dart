@@ -41,9 +41,9 @@ class _ForgotPasswordSheetState extends State<_ForgotPasswordSheet> {
           children: [
             const HeroCard(
               compact: true,
-              title: 'Sifre yenile',
+              title: 'Şifre yenile',
               subtitle:
-                  'Kurumsal e-posta adresine guvenli bir sifirlama baglantisi gonderelim.',
+                  'Kurumsal e-posta adresine guvenli bir sifirlama baglantisi gönderelim.',
               badges: [HeroCardBadge(label: 'Kurumsal hesap')],
             ),
             const SizedBox(height: 16),
@@ -58,13 +58,13 @@ class _ForgotPasswordSheetState extends State<_ForgotPasswordSheet> {
               const InfoStrip(
                 icon: CupertinoIcons.check_mark_circled_solid,
                 text:
-                    'Baglanti gonderildi. Gelen kutusu ve spam klasorunu kontrol et.',
+                    'Baglanti gönderildi. Gelen kutusu ve spam klasorunu kontrol et.',
                 color: AppColors.teal,
               ),
               const SizedBox(height: 14),
             ],
             PrimaryButton(
-              label: 'Baglanti Gonder',
+              label: 'Baglanti Gönder',
               onTap: () => setState(() => sent = true),
             ),
           ],

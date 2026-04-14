@@ -22,6 +22,21 @@ class GroupInfoPage extends StatefulWidget {
 class _GroupInfoPageState extends State<GroupInfoPage> {
   late GroupItem group;
 
+  void _addSystemMessage(String text) {
+    final existing =
+        appRepository.conversationMessages[group.name] ?? <ChatMessage>[];
+    appRepository.conversationMessages[group.name] = [
+      ...existing,
+      ChatMessage(
+        sender: 'Sistem',
+        message: text,
+        time: TimeOfDay.now().format(context),
+        isMe: false,
+        isSystem: true,
+      ),
+    ];
+  }
+
   void _persistGroup({String? oldName}) {
     final targetName = oldName ?? group.name;
     final index = appRepository.groups.indexWhere(
@@ -90,6 +105,9 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                         ) ??
                         0;
                     _persistGroup(oldName: oldName);
+                    _addSystemMessage(
+                      'Grup adi "$oldName" yerine "$newName" oldu.',
+                    );
                   });
                   Navigator.pop(context);
                 },
@@ -120,7 +138,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Grup Fotografini Sec',
+                  'Grup Fotoğrafıni Sec',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 14),
@@ -177,11 +195,12 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                 ),
                 const SizedBox(height: 14),
                 PrimaryButton(
-                  label: 'Fotografi Kaydet',
+                  label: 'Fotoğrafı Kaydet',
                   onTap: () {
                     setState(() {
                       group = group.copyWith(avatarIndex: selected);
                       _persistGroup();
+                      _addSystemMessage('Grup fotografi secimi güncellendi.');
                     });
                     Navigator.pop(context);
                   },
@@ -214,7 +233,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Kisi Ekle',
+                  'Kişi Ekle',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 14),
@@ -248,7 +267,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                 ),
                 const SizedBox(height: 6),
                 PrimaryButton(
-                  label: 'Uyeyi Ekle',
+                  label: 'Üyeyi Ekle',
                   onTap: () {
                     if (selectedNumber != null) {
                       final member = appRepository.students.firstWhere(
@@ -266,6 +285,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                       setState(() {
                         appRepository.groupMembers[group.name] = members;
                         _syncGroupCount();
+                        _addSystemMessage('${member.name} gruba eklendi.');
                       });
                     }
                     Navigator.pop(context);
@@ -302,10 +322,10 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
               ListTile(
                 title: const Text('Sessizi kaldir'),
                 onTap: () {
-                  setState(
-                    () =>
-                        group = group.copyWith(muted: false, mutedUntil: null),
-                  );
+                  setState(() {
+                    group = group.copyWith(muted: false, mutedUntil: null);
+                    _addSystemMessage('Sohbet sessizden cikarildi.');
+                  });
                   Navigator.pop(context);
                 },
               ),
@@ -316,7 +336,10 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
   }
 
   void _applyMute(String duration) {
-    setState(() => group = group.copyWith(muted: true, mutedUntil: duration));
+    setState(() {
+      group = group.copyWith(muted: true, mutedUntil: duration);
+      _addSystemMessage('Sohbet $duration boyunca sessize alindi.');
+    });
     Navigator.pop(context);
   }
 
@@ -362,7 +385,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                           child: GlassCard(
                             child: Center(
                               child: Text(
-                                'Kisi Ekle',
+                                'Kişi Ekle',
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
                             ),
@@ -376,7 +399,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                           child: GlassCard(
                             child: Center(
                               child: Text(
-                                'Profil Fotografi',
+                                'Profil Fotoğrafı',
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
                             ),

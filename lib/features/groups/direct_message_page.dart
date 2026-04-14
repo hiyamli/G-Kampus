@@ -30,13 +30,13 @@ class _DirectMessagePageState extends State<DirectMessagePage> {
   void _send() {
     if (selectedStudent == null || messageController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bir kisi sec ve mesaj yaz.')),
+        const SnackBar(content: Text('Bir kişi sec ve mesaj yaz.')),
       );
       return;
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Mesaj ${selectedStudent!} kisina gonderildi.')),
+      SnackBar(content: Text('Mesaj ${selectedStudent!} kişina gönderildi.')),
     );
     final dm = GroupItem(
       name: selectedStudent!,
@@ -77,7 +77,7 @@ class _DirectMessagePageState extends State<DirectMessagePage> {
                 const HeroCard(
                   title: 'Direkt Mesaj Baslat',
                   subtitle:
-                      'Kisi secip ilk mesaji ayni ekrandan gonderebilirsin.',
+                      'Kişi secip ilk mesaji ayni ekrandan gönderebilirsin.',
                   badges: [HeroCardBadge(label: 'Hizli DM')],
                 ),
                 const SizedBox(height: 18),
@@ -117,7 +117,7 @@ class _DirectMessagePageState extends State<DirectMessagePage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                PrimaryButton(label: 'Gonder', onTap: _send),
+                PrimaryButton(label: 'Gönder', onTap: _send),
               ]),
             ),
           ),

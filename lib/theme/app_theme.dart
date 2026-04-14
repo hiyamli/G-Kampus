@@ -62,6 +62,7 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: AppRadius.card24),
       ),
       navigationBarTheme: NavigationBarThemeData(
+        height: 70,
         backgroundColor: isDark
             ? const Color(0xCC131B28)
             : const Color(0xCCFFFFFF),
@@ -86,8 +87,8 @@ class AppTheme {
         filled: true,
         fillColor: AppColors.strongGlass(isDark),
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 18,
-          vertical: 18,
+          horizontal: 16,
+          vertical: 14,
         ),
         border: OutlineInputBorder(
           borderRadius: AppRadius.card22,

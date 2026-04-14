@@ -28,10 +28,10 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 const HeroCard(
-                  title: 'Ders Hatirlatmalari',
+                  title: 'Ders Hatırlatmalari',
                   subtitle:
-                      'Ders, odev ve sinav hatirlatma zamanlarini belirle.',
-                  badges: [HeroCardBadge(label: 'Kisisel rutin')],
+                      'Ders, ödev ve sinav hatirlatma zamanlarini belirle.',
+                  badges: [HeroCardBadge(label: 'Kişisel rutin')],
                 ),
                 const SizedBox(height: 18),
                 _toggleCard(
@@ -43,7 +43,7 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
                 const SizedBox(height: 10),
                 _toggleCard(
                   context,
-                  'Odev teslimi',
+                  'Ödev teslimi',
                   assignments,
                   (value) => setState(() => assignments = value),
                 ),
@@ -62,7 +62,7 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Hatirlatma suresi',
+                          'Hatırlatma suresi',
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),

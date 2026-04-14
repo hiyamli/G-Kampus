@@ -30,7 +30,7 @@ class _GeneralSettingsPageState extends State<GeneralSettingsPage> {
                 const HeroCard(
                   title: 'Genel Ayarlar',
                   subtitle:
-                      'Kampus uygulamasinin temel davranislarini kisilestir.',
+                      'Kampüs uygulamasinin temel davranislarini kişilestir.',
                   badges: [HeroCardBadge(label: 'Uygulama tercihleri')],
                 ),
                 const SizedBox(height: 18),
