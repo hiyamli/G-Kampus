@@ -1,17 +1,11 @@
-# kampusapp
+# Kampusapp
 
-A new Flutter project.
+Kampusapp, kampus yasamini tek bir uygulamada toplamak icin hazirlanmis bir mobil uygulamadir.
 
-## Getting Started
+Uygulama icinde odevler, ders programi, duyurular, grup/mesajlasma ve profil alanlari bulunur.
 
-This project is a starting point for a Flutter application.
+Bu surum su an frontend odakli olarak ilerlemekte, backend entegrasyonu ise ayri bir ekip tarafindan surdurulmektedir.
 
-A few resources to get you started if this is your first Flutter project:
+## Kisa Not
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Bu repo, projenin aktif gelistirme surumudur. Arayuz ve akislarda zaman zaman guncellemeler yapilabilir.
