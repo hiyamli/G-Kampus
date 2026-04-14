@@ -1,6 +1,6 @@
-# Kampusapp
+# G Kampüs
 
-Kampusapp, kampus yasamini tek bir uygulamada toplamak icin hazirlanmis bir mobil uygulamadir.
+G Kmapüs, kampus yasamini tek bir uygulamada toplamak icin hazirlanmis bir mobil uygulamadir.
 
 Uygulama icinde odevler, ders programi, duyurular, grup/mesajlasma ve profil alanlari bulunur.
 
