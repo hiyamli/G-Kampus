@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/supabase/supabase_service.dart';
 import '../../theme/colors.dart';
 import '../../widgets/campus_scaffold.dart';
 import '../../widgets/glass_card.dart';
@@ -11,17 +13,60 @@ import '../../widgets/primary_button.dart';
 import 'forgot_password_sheet.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key, required this.onLogin});
-
-  final VoidCallback onLogin;
+  const LoginPage({super.key});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
 }
 
 class _LoginPageState extends State<LoginPage> {
+  final _identifierController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _isLoading = false;
   bool saveInfo = true;
   bool hidePassword = true;
+
+  @override
+  void dispose() {
+    _identifierController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    final identifier = _identifierController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (identifier.isEmpty || password.isEmpty) {
+      _showError('Lütfen tüm alanları doldurun.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      await SupabaseService.client.auth.signInWithPassword(
+        email: identifier, // Assuming email/password for now
+        password: password,
+      );
+    } on AuthException catch (e) {
+      _showError(e.message);
+    } catch (e) {
+      _showError('Beklenmedik bir hata oluştu.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,12 +117,14 @@ class _LoginPageState extends State<LoginPage> {
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       SizedBox(height: compact ? 12 : 16),
-                      const InputField(
-                        hint: 'Öğrenci No veya E-posta',
+                      InputField(
+                        controller: _identifierController,
+                        hint: 'E-posta',
                         icon: CupertinoIcons.person_crop_circle,
                       ),
                       SizedBox(height: compact ? 10 : 14),
                       InputField(
+                        controller: _passwordController,
                         hint: 'Şifre',
                         icon: CupertinoIcons.lock_fill,
                         obscureText: hidePassword,
@@ -124,9 +171,9 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       SizedBox(height: compact ? 8 : 12),
                       PrimaryButton(
-                        label: 'Giriş Yap',
-                        icon: CupertinoIcons.arrow_right,
-                        onTap: widget.onLogin,
+                        label: _isLoading ? 'Giriş Yapılıyor...' : 'Giriş Yap',
+                        icon: _isLoading ? null : CupertinoIcons.arrow_right,
+                        onTap: _isLoading ? null : _handleLogin,
                       ),
                     ],
                   ),
