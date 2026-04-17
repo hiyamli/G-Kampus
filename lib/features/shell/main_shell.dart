@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/data/repository_provider.dart';
 import '../../core/models/mock_models.dart';
+import '../../core/supabase/supabase_service.dart';
 import '../../widgets/campus_scaffold.dart';
 import '../../widgets/custom_bottom_nav.dart';
 import '../announcements/announcements_page.dart';
@@ -102,6 +105,9 @@ class _MainShellState extends State<MainShell> {
                 profile = updatedProfile;
                 avatarIndex = updatedAvatar;
               });
+              unawaited(
+                SupabaseService.updateCurrentProfile(bio: updatedProfile.bio),
+              );
             },
           ),
           showBackButton: true,

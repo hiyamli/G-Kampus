@@ -27,14 +27,14 @@ class MockData {
     student = defaultStudent;
   }
 
-  static const courses = [
+  static final courses = <String>[
     'Mobil Programlama',
     'Veri Yapilari',
     'UI Design Studio',
     'Ag Teknolojileri',
   ];
 
-  static const schedules = [
+  static final schedules = <ScheduleItem>[
     ScheduleItem(
       course: 'Mobil Programlama',
       time: '10:00 - 11:45',
@@ -127,7 +127,7 @@ class MockData {
     ),
   ];
 
-  static const announcements = [
+  static final announcements = <AnnouncementItem>[
     AnnouncementItem(
       title: 'Bahar Senligi kayıtlari açıldı',
       description:
@@ -162,7 +162,7 @@ class MockData {
     ),
   ];
 
-  static const calendarEvents = [
+  static final calendarEvents = <CalendarEvent>[
     CalendarEvent(
       title: 'Ders kayıt yenileme haftasi',
       range: '01 Mayis - 05 Mayis',
@@ -275,7 +275,7 @@ class MockData {
     'Campus Runners': [students[0], students[3]],
   };
 
-  static const students = [
+  static final students = <StudentOption>[
     StudentOption(
       name: 'Deniz Karaca',
       number: '220401044',
@@ -290,11 +290,83 @@ class MockData {
     StudentOption(name: 'Selin Aras', number: '220401073', role: 'Kulup Üyesi'),
   ];
 
-  static const menuItems = [
+  static final menuItems = <String>[
     'Izgara kofte',
     'Sebzeli bulgur pilavi',
     'Mercimek corbasi',
     'Mevsim salata',
     'Ayran',
   ];
+
+  static void setCourses(Iterable<String> items) {
+    courses
+      ..clear()
+      ..addAll(items);
+  }
+
+  static void setSchedules(Iterable<ScheduleItem> items) {
+    schedules
+      ..clear()
+      ..addAll(items);
+  }
+
+  static void setAssignments(Iterable<AssignmentItem> items) {
+    assignments
+      ..clear()
+      ..addAll(items);
+  }
+
+  static void setAnnouncements(Iterable<AnnouncementItem> items) {
+    announcements
+      ..clear()
+      ..addAll(items);
+  }
+
+  static void setCalendarEvents(Iterable<CalendarEvent> items) {
+    calendarEvents
+      ..clear()
+      ..addAll(items);
+  }
+
+  static void setGroups(Iterable<GroupItem> items) {
+    groups
+      ..clear()
+      ..addAll(items);
+  }
+
+  static void setUnreadConversationCounts(Map<String, int> items) {
+    unreadConversationCounts
+      ..clear()
+      ..addAll(items);
+  }
+
+  static void setChatMessages(Iterable<ChatMessage> items) {
+    chatMessages
+      ..clear()
+      ..addAll(items);
+  }
+
+  static void setConversationMessages(Map<String, List<ChatMessage>> items) {
+    conversationMessages
+      ..clear()
+      ..addAll(items);
+  }
+
+  static void setGroupMembers(Map<String, List<StudentOption>> items) {
+    groupMembers
+      ..clear()
+      ..addAll(items);
+  }
+
+  static void setStudents(Iterable<StudentOption> items) {
+    students
+      ..clear()
+      ..addAll(items);
+  }
+
+  static void setMenuItems(Iterable<String> items) {
+    menuItems
+      ..clear()
+      ..addAll(items);
+  }
 }

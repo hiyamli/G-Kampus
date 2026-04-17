@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/data/repository_provider.dart';
 import '../../core/models/mock_models.dart';
+import '../../core/supabase/supabase_service.dart';
 import '../../theme/colors.dart';
 import '../../widgets/campus_scaffold.dart';
 import '../../widgets/glass_card.dart';
@@ -20,6 +21,7 @@ class DirectMessagePage extends StatefulWidget {
 class _DirectMessagePageState extends State<DirectMessagePage> {
   final TextEditingController messageController = TextEditingController();
   String? selectedStudent;
+  bool isSending = false;
 
   @override
   void dispose() {
@@ -27,7 +29,8 @@ class _DirectMessagePageState extends State<DirectMessagePage> {
     super.dispose();
   }
 
-  void _send() {
+  Future<void> _send() async {
+    if (isSending) return;
     if (selectedStudent == null || messageController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Bir kişi sec ve mesaj yaz.')),
@@ -35,34 +38,44 @@ class _DirectMessagePageState extends State<DirectMessagePage> {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Mesaj ${selectedStudent!} kişina gönderildi.')),
-    );
-    final dm = GroupItem(
-      name: selectedStudent!,
-      memberCount: 'Direkt mesaj',
-      muted: false,
-      color: AppColors.teal,
-      avatarIndex: appRepository.students
-          .indexWhere((student) => student.name == selectedStudent!)
-          .clamp(0, 3),
-      isDirect: true,
-    );
+    setState(() => isSending = true);
+    try {
+      final selected = appRepository.students.firstWhere(
+        (student) => student.name == selectedStudent,
+      );
 
-    appRepository.groupMembers[dm.name] = appRepository.students
-        .where((student) => student.name == selectedStudent!)
-        .toList();
-    appRepository.conversationMessages[dm.name] = [
-      ChatMessage(
-        sender: 'Zeynep',
-        message: messageController.text.trim(),
-        time: TimeOfDay.now().format(context),
-        isMe: true,
-      ),
-    ];
-    appRepository.unreadConversationCounts[dm.name] = 0;
+      await SupabaseService.createDirectMessage(
+        target: selected,
+        initialMessage: messageController.text.trim(),
+      );
 
-    Navigator.of(context).pop(dm);
+      final dm = appRepository.groups.firstWhere(
+        (group) => group.name == selectedStudent,
+        orElse: () => GroupItem(
+          name: selectedStudent!,
+          memberCount: 'Direkt mesaj',
+          muted: false,
+          color: AppColors.teal,
+          avatarIndex: 0,
+          isDirect: true,
+        ),
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Mesaj ${selectedStudent!} kişisine gönderildi.'),
+        ),
+      );
+      Navigator.of(context).pop(dm);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Mesaj gönderilemedi: $error')));
+    } finally {
+      if (mounted) setState(() => isSending = false);
+    }
   }
 
   @override
@@ -81,32 +94,40 @@ class _DirectMessagePageState extends State<DirectMessagePage> {
                   badges: [HeroCardBadge(label: 'Hizli DM')],
                 ),
                 const SizedBox(height: 18),
-                ...appRepository.students.map(
-                  (student) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: GestureDetector(
-                      onTap: () =>
-                          setState(() => selectedStudent = student.name),
-                      child: GlassCard(
-                        child: Row(
-                          children: [
-                            const Icon(CupertinoIcons.person_crop_circle),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text('${student.name} • ${student.role}'),
+                ...appRepository.students
+                    .where(
+                      (student) =>
+                          student.number != appRepository.student.number ||
+                          student.name != appRepository.student.name,
+                    )
+                    .map(
+                      (student) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: GestureDetector(
+                          onTap: () =>
+                              setState(() => selectedStudent = student.name),
+                          child: GlassCard(
+                            child: Row(
+                              children: [
+                                const Icon(CupertinoIcons.person_crop_circle),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    '${student.name} • ${student.role}',
+                                  ),
+                                ),
+                                IgnorePointer(
+                                  child: Checkbox(
+                                    value: selectedStudent == student.name,
+                                    onChanged: (_) {},
+                                  ),
+                                ),
+                              ],
                             ),
-                            IgnorePointer(
-                              child: Checkbox(
-                                value: selectedStudent == student.name,
-                                onChanged: (_) {},
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
                 const SizedBox(height: 10),
                 GlassCard(
                   child: InputField(
@@ -117,7 +138,12 @@ class _DirectMessagePageState extends State<DirectMessagePage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                PrimaryButton(label: 'Gönder', onTap: _send),
+                PrimaryButton(
+                  label: 'Gönder',
+                  onTap: () {
+                    _send();
+                  },
+                ),
               ]),
             ),
           ),

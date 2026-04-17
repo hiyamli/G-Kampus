@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/data/repository_provider.dart';
 import '../../core/models/mock_models.dart';
+import '../../core/supabase/supabase_service.dart';
 import '../../theme/colors.dart';
 import '../../widgets/campus_scaffold.dart';
 import '../../widgets/floating_icon_button.dart';
@@ -30,11 +33,22 @@ class _ChatPageState extends State<ChatPage> {
   @override
   void initState() {
     super.initState();
+    _reloadMessagesFromRepository();
+    unawaited(_refreshFromDatabase());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+  }
+
+  Future<void> _refreshFromDatabase() async {
+    await SupabaseService.refreshMessagesData();
+    if (!mounted) return;
+    setState(_reloadMessagesFromRepository);
+  }
+
+  void _reloadMessagesFromRepository() {
     messages = List.of(
       appRepository.conversationMessages[widget.group.name] ??
           appRepository.chatMessages,
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
   }
 
   @override
@@ -107,28 +121,32 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     final text = messageController.text.trim();
     if (text.isEmpty && pendingAttachment == null) return;
 
-    final message = ChatMessage(
-      sender: 'Zeynep',
-      message: text.isEmpty ? 'Ek dosya paylasildi.' : text,
-      time: TimeOfDay.now().format(context),
-      isMe: true,
-      replyTo: replyTo,
-      attachment: pendingAttachment,
-    );
+    try {
+      await SupabaseService.sendMessage(
+        groupName: widget.group.name,
+        message: text.isEmpty ? 'Ek dosya paylaşıldı.' : text,
+        replyTo: replyTo,
+        attachment: pendingAttachment,
+      );
 
-    setState(() {
-      messages = [...messages, message];
-      appRepository.conversationMessages[widget.group.name] =
-          List<ChatMessage>.from(messages);
-      messageController.clear();
-      replyTo = null;
-      pendingAttachment = null;
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+      if (!mounted) return;
+      setState(() {
+        _reloadMessagesFromRepository();
+        messageController.clear();
+        replyTo = null;
+        pendingAttachment = null;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Mesaj gönderilemedi: $error')));
+    }
   }
 
   Future<void> _showMessageActions(
@@ -171,21 +189,23 @@ class _ChatPageState extends State<ChatPage> {
 
     if (target == null || !mounted) return;
 
-    final forwarded = ChatMessage(
-      sender: 'Zeynep',
-      message: sourceMessage.message,
-      time: TimeOfDay.now().format(context),
-      isMe: true,
-      attachment: sourceMessage.attachment,
-    );
+    try {
+      await SupabaseService.forwardMessage(
+        targetGroupName: target.name,
+        message: sourceMessage.message,
+        attachment: sourceMessage.attachment,
+      );
 
-    final existing =
-        appRepository.conversationMessages[target.name] ?? <ChatMessage>[];
-    appRepository.conversationMessages[target.name] = [...existing, forwarded];
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Mesaj ${target.name} sohbetine iletildi.')),
-    );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Mesaj ${target.name} sohbetine iletildi.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Mesaj iletilemedi: $error')));
+    }
   }
 
   @override
@@ -358,7 +378,7 @@ class _ChatPageState extends State<ChatPage> {
                       child: FloatingActionButton(
                         heroTag: null,
                         elevation: 0,
-                        onPressed: _sendMessage,
+                        onPressed: () => unawaited(_sendMessage()),
                         child: const Icon(CupertinoIcons.arrow_up, size: 18),
                       ),
                     ),

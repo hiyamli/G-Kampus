@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/data/repository_provider.dart';
 import '../../core/models/mock_models.dart';
+import '../../core/supabase/supabase_service.dart';
 import '../../theme/colors.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/section_header.dart';
@@ -27,8 +28,9 @@ class _MessagesPageState extends State<MessagesPage> {
     final created = await Navigator.of(context).push<GroupItem>(
       MaterialPageRoute(builder: (_) => const DirectMessagePage()),
     );
-    if (created != null) {
-      setState(() => appRepository.groups.insert(0, created));
+    if (created != null && mounted) {
+      await SupabaseService.refreshMessagesData();
+      setState(() {});
       widget.onDataChanged?.call();
     }
   }
@@ -37,8 +39,9 @@ class _MessagesPageState extends State<MessagesPage> {
     final created = await Navigator.of(context).push<GroupItem>(
       MaterialPageRoute(builder: (_) => const CreateGroupPage()),
     );
-    if (created != null) {
-      setState(() => appRepository.groups.insert(0, created));
+    if (created != null && mounted) {
+      await SupabaseService.refreshMessagesData();
+      setState(() {});
       widget.onDataChanged?.call();
     }
   }
@@ -110,10 +113,14 @@ class _GroupCard extends StatelessWidget {
       child: GlassCard(
         child: InkWell(
           onTap: () async {
-            appRepository.unreadConversationCounts[group.name] = 0;
+            await SupabaseService.markConversationRead(group.name);
+            if (!context.mounted) return;
             await Navigator.of(
               context,
             ).push(MaterialPageRoute(builder: (_) => ChatPage(group: group)));
+            if (context.mounted) {
+              await SupabaseService.refreshMessagesData();
+            }
           },
           child: Row(
             children: [

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/data/repository_provider.dart';
 import '../../core/models/mock_models.dart';
+import '../../core/supabase/supabase_service.dart';
 import '../../theme/colors.dart';
 import '../../widgets/campus_scaffold.dart';
 import '../../widgets/glass_card.dart';
@@ -22,6 +23,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   final TextEditingController topicController = TextEditingController();
   final Set<String> selectedStudents = {};
   int selectedAvatar = 0;
+  bool isCreating = false;
 
   @override
   void dispose() {
@@ -30,7 +32,8 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     super.dispose();
   }
 
-  void _create() {
+  Future<void> _create() async {
+    if (isCreating) return;
     if (nameController.text.trim().isEmpty || selectedStudents.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Grup adi ve en az bir uye sec.')),
@@ -38,35 +41,44 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${nameController.text.trim()} olusturuldu.')),
-    );
-    final created = GroupItem(
-      name: nameController.text.trim(),
-      memberCount: '${selectedStudents.length + 1} uye',
-      muted: false,
-      color: AppColors.teal,
-      avatarIndex: selectedAvatar,
-      isDirect: false,
-    );
+    setState(() => isCreating = true);
+    try {
+      final members = appRepository.students
+          .where((student) => selectedStudents.contains(student.number))
+          .toList();
+      final groupName = nameController.text.trim();
+      await SupabaseService.createGroup(
+        name: groupName,
+        topic: topicController.text.trim(),
+        avatarIndex: selectedAvatar,
+        members: members,
+      );
 
-    final members = appRepository.students
-        .where((student) => selectedStudents.contains(student.number))
-        .toList();
-    appRepository.groupMembers[created.name] = members;
-    appRepository.conversationMessages[created.name] = [
-      ChatMessage(
-        sender: 'Sistem',
-        message:
-            '${topicController.text.trim().isEmpty ? 'Yeni grup' : topicController.text.trim()} olusturuldu.',
-        time: TimeOfDay.now().format(context),
-        isMe: false,
-        isSystem: true,
-      ),
-    ];
-    appRepository.unreadConversationCounts[created.name] = 0;
+      final created = appRepository.groups.firstWhere(
+        (group) => group.name == groupName,
+        orElse: () => GroupItem(
+          name: groupName,
+          memberCount: '${selectedStudents.length + 1} uye',
+          muted: false,
+          color: AppColors.teal,
+          avatarIndex: selectedAvatar,
+          isDirect: false,
+        ),
+      );
 
-    Navigator.of(context).pop(created);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$groupName oluşturuldu.')));
+      Navigator.of(context).pop(created);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Grup oluşturulamadı: $error')));
+    } finally {
+      if (mounted) setState(() => isCreating = false);
+    }
   }
 
   @override
@@ -155,45 +167,56 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                ...appRepository.students.map(
-                  (student) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          if (selectedStudents.contains(student.number)) {
-                            selectedStudents.remove(student.number);
-                          } else {
-                            selectedStudents.add(student.number);
-                          }
-                        });
-                      },
-                      child: GlassCard(
-                        child: Row(
-                          children: [
-                            const Icon(CupertinoIcons.person_crop_circle),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                '${student.name} • ${student.number}',
-                              ),
-                            ),
-                            IgnorePointer(
-                              child: Checkbox(
-                                value: selectedStudents.contains(
-                                  student.number,
+                ...appRepository.students
+                    .where(
+                      (student) =>
+                          student.number != appRepository.student.number ||
+                          student.name != appRepository.student.name,
+                    )
+                    .map(
+                      (student) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              if (selectedStudents.contains(student.number)) {
+                                selectedStudents.remove(student.number);
+                              } else {
+                                selectedStudents.add(student.number);
+                              }
+                            });
+                          },
+                          child: GlassCard(
+                            child: Row(
+                              children: [
+                                const Icon(CupertinoIcons.person_crop_circle),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    '${student.name} • ${student.number}',
+                                  ),
                                 ),
-                                onChanged: (_) {},
-                              ),
+                                IgnorePointer(
+                                  child: Checkbox(
+                                    value: selectedStudents.contains(
+                                      student.number,
+                                    ),
+                                    onChanged: (_) {},
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
                 const SizedBox(height: 8),
-                PrimaryButton(label: 'Olustur', onTap: _create),
+                PrimaryButton(
+                  label: 'Olustur',
+                  onTap: () {
+                    _create();
+                  },
+                ),
               ]),
             ),
           ),
