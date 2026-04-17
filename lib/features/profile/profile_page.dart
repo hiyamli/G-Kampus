@@ -14,7 +14,7 @@ import 'privacy_security_page.dart';
 import 'profile_edit_result.dart';
 import 'reminder_settings_page.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({
     super.key,
     required this.themeMode,
@@ -32,18 +32,52 @@ class ProfilePage extends StatelessWidget {
   final int avatarIndex;
   final void Function(StudentProfile profile, int avatarIndex) onProfileChanged;
 
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  late StudentProfile profileState;
+  late int avatarIndexState;
+
+  @override
+  void initState() {
+    super.initState();
+    profileState = widget.profile;
+    avatarIndexState = widget.avatarIndex;
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfilePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.profile != widget.profile ||
+        oldWidget.avatarIndex != widget.avatarIndex) {
+      profileState = widget.profile;
+      avatarIndexState = widget.avatarIndex;
+    }
+  }
+
   Future<void> _editProfile(BuildContext context) async {
     final result = await Navigator.of(context).push<ProfileEditResult>(
       MaterialPageRoute(
         builder: (_) => EditProfilePage(
-          initialBio: profile.bio,
-          initialAvatarIndex: avatarIndex,
+          initialBio: profileState.bio,
+          initialAvatarIndex: avatarIndexState,
+          initialAvatarPath: profileState.avatarPath,
         ),
       ),
     );
 
     if (result == null) return;
-    onProfileChanged(profile.copyWith(bio: result.bio), result.avatarIndex);
+    final updated = profileState.copyWith(
+      bio: result.bio,
+      avatarPath: result.avatarPath,
+    );
+    setState(() {
+      profileState = updated;
+      avatarIndexState = result.avatarIndex;
+    });
+    widget.onProfileChanged(updated, result.avatarIndex);
   }
 
   List<Color> _avatarColors(int index) {
@@ -76,8 +110,18 @@ class ProfilePage extends StatelessWidget {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             gradient: LinearGradient(
-                              colors: _avatarColors(avatarIndex),
+                              colors: _avatarColors(avatarIndexState),
                             ),
+                            image:
+                                (profileState.avatarPath != null &&
+                                    profileState.avatarPath!.isNotEmpty)
+                                ? DecorationImage(
+                                    image: NetworkImage(
+                                      profileState.avatarPath!,
+                                    ),
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -86,26 +130,26 @@ class ProfilePage extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                profile.name,
+                                profileState.name,
                                 style: Theme.of(context).textTheme.titleLarge,
                               ),
                               const SizedBox(height: 6),
-                              const TagBadge(
-                                label: 'Öğrenci',
+                              TagBadge(
+                                label: profileState.role,
                                 variant: TagBadgeVariant.accent,
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                profile.department,
+                                profileState.department,
                                 style: Theme.of(context).textTheme.bodyMedium,
                               ),
                               Text(
-                                '${profile.grade} • ${profile.number}',
+                                '${profileState.grade} • ${profileState.number}',
                                 style: Theme.of(context).textTheme.bodyMedium,
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                'GNO ${profile.gpa}',
+                                'GNO ${profileState.gpa}',
                                 style: Theme.of(context).textTheme.labelLarge,
                               ),
                             ],
@@ -119,7 +163,7 @@ class ProfilePage extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      profile.bio,
+                      profileState.bio,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 14),
@@ -148,8 +192,8 @@ class ProfilePage extends StatelessWidget {
                     child: _ThemeOption(
                       label: 'System',
                       icon: CupertinoIcons.circle_lefthalf_fill,
-                      selected: themeMode == ThemeMode.system,
-                      onTap: () => onThemeChanged(ThemeMode.system),
+                      selected: widget.themeMode == ThemeMode.system,
+                      onTap: () => widget.onThemeChanged(ThemeMode.system),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -157,8 +201,8 @@ class ProfilePage extends StatelessWidget {
                     child: _ThemeOption(
                       label: 'Light',
                       icon: CupertinoIcons.sun_max_fill,
-                      selected: themeMode == ThemeMode.light,
-                      onTap: () => onThemeChanged(ThemeMode.light),
+                      selected: widget.themeMode == ThemeMode.light,
+                      onTap: () => widget.onThemeChanged(ThemeMode.light),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -166,8 +210,8 @@ class ProfilePage extends StatelessWidget {
                     child: _ThemeOption(
                       label: 'Dark',
                       icon: CupertinoIcons.moon_fill,
-                      selected: themeMode == ThemeMode.dark,
-                      onTap: () => onThemeChanged(ThemeMode.dark),
+                      selected: widget.themeMode == ThemeMode.dark,
+                      onTap: () => widget.onThemeChanged(ThemeMode.dark),
                     ),
                   ),
                 ],
@@ -229,7 +273,7 @@ class ProfilePage extends StatelessWidget {
               ),
               const SizedBox(height: 18),
               OutlinedButton.icon(
-                onPressed: onLogout,
+                onPressed: widget.onLogout,
                 icon: const Icon(Icons.logout_rounded),
                 label: const Text('Çıkış Yap'),
               ),

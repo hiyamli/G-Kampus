@@ -214,6 +214,10 @@ class MockData {
     'Campus Runners': 0,
   };
 
+  static final conversationPinned = <String, bool>{};
+  static final conversationLastActivity = <String, int>{};
+  static final conversationLastMessage = <String, String>{};
+
   static final chatMessages = [
     ChatMessage(
       sender: 'Ece',
@@ -336,6 +340,24 @@ class MockData {
 
   static void setUnreadConversationCounts(Map<String, int> items) {
     unreadConversationCounts
+      ..clear()
+      ..addAll(items);
+  }
+
+  static void setConversationPinned(Map<String, bool> items) {
+    conversationPinned
+      ..clear()
+      ..addAll(items);
+  }
+
+  static void setConversationLastActivity(Map<String, int> items) {
+    conversationLastActivity
+      ..clear()
+      ..addAll(items);
+  }
+
+  static void setConversationLastMessage(Map<String, String> items) {
+    conversationLastMessage
       ..clear()
       ..addAll(items);
   }

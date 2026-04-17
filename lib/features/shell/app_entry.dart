@@ -28,6 +28,7 @@ class _KampusAppState extends State<KampusApp> {
   Future<void> _checkAuth() async {
     final session = SupabaseService.client.auth.currentSession;
     if (session != null) {
+      SupabaseService.resetAppSessionData();
       await SupabaseService.loadCurrentUserDataToAppState();
     }
     setState(() {
@@ -42,9 +43,10 @@ class _KampusAppState extends State<KampusApp> {
     ) async {
       final session = data.session;
       if (session != null) {
+        SupabaseService.resetAppSessionData();
         await SupabaseService.loadCurrentUserDataToAppState();
       } else {
-        SupabaseService.resetAppProfile();
+        SupabaseService.resetAppSessionData();
       }
       if (!mounted) return;
       setState(() {

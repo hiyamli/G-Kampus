@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/data/repository_provider.dart';
 import '../../core/models/mock_models.dart';
@@ -27,8 +29,10 @@ class _ChatPageState extends State<ChatPage> {
   final TextEditingController messageController = TextEditingController();
   final ScrollController scrollController = ScrollController();
   late List<ChatMessage> messages;
+  final ImagePicker _imagePicker = ImagePicker();
   String? replyTo;
   String? pendingAttachment;
+  int? pendingAttachmentBytes;
 
   @override
   void initState() {
@@ -39,15 +43,15 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _refreshFromDatabase() async {
-    await SupabaseService.refreshMessagesData();
+    await SupabaseService.loadConversationForGroup(widget.group.name);
     if (!mounted) return;
     setState(_reloadMessagesFromRepository);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
   }
 
   void _reloadMessagesFromRepository() {
     messages = List.of(
-      appRepository.conversationMessages[widget.group.name] ??
-          appRepository.chatMessages,
+      appRepository.conversationMessages[widget.group.name] ?? <ChatMessage>[],
     );
   }
 
@@ -82,20 +86,69 @@ class _ChatPageState extends State<ChatPage> {
 
   void _scrollToBottom() {
     if (!scrollController.hasClients) return;
-    scrollController.animateTo(
-      scrollController.position.maxScrollExtent + 140,
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOut,
-    );
+    scrollController.jumpTo(scrollController.position.maxScrollExtent);
   }
 
-  void _setAttachment(String value) {
-    setState(() => pendingAttachment = value);
+  Future<void> _pickDocumentAttachment() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: false,
+        withData: true,
+      );
+      final files = result?.files;
+      final file = (files == null || files.isEmpty) ? null : files.first;
+      if (file == null || file.bytes == null) return;
+      final bytes = file.bytes!;
+
+      final uploadedPath = await SupabaseService.uploadChatAttachment(
+        bytes: bytes,
+        fileName: file.name,
+        isImage: false,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        pendingAttachment = uploadedPath;
+        pendingAttachmentBytes = bytes.length;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Dosya eklenemedi: $error')));
+    }
   }
 
-  void _openDetails() {
+  Future<void> _pickImageAttachment() async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      final uploadedPath = await SupabaseService.uploadChatAttachment(
+        bytes: bytes,
+        fileName: picked.name,
+        isImage: true,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        pendingAttachment = uploadedPath;
+        pendingAttachmentBytes = bytes.length;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Fotoğraf eklenemedi: $error')));
+    }
+  }
+
+  Future<void> _openDetails() async {
     if (widget.group.isDirect) {
-      Navigator.of(context).push(
+      await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => PublicProfilePage(
             profile: _directProfile,
@@ -108,9 +161,18 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
 
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => GroupInfoPage(group: widget.group)),
+    final latest = appRepository.groups.firstWhere(
+      (group) => group.name == widget.group.name,
+      orElse: () => widget.group,
     );
+
+    final leftGroup = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => GroupInfoPage(group: latest)));
+
+    if (leftGroup == true && mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   void _searchMessages() {
@@ -128,7 +190,7 @@ class _ChatPageState extends State<ChatPage> {
     try {
       await SupabaseService.sendMessage(
         groupName: widget.group.name,
-        message: text.isEmpty ? 'Ek dosya paylaşıldı.' : text,
+        message: text,
         replyTo: replyTo,
         attachment: pendingAttachment,
       );
@@ -139,6 +201,7 @@ class _ChatPageState extends State<ChatPage> {
         messageController.clear();
         replyTo = null;
         pendingAttachment = null;
+        pendingAttachmentBytes = null;
       });
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     } catch (error) {
@@ -225,18 +288,30 @@ class _ChatPageState extends State<ChatPage> {
                       colors: [widget.group.color, AppColors.ink],
                     ),
                     borderRadius: BorderRadius.circular(18),
+                    image:
+                        (widget.group.avatarPath != null &&
+                            widget.group.avatarPath!.isNotEmpty)
+                        ? DecorationImage(
+                            image: NetworkImage(widget.group.avatarPath!),
+                            fit: BoxFit.cover,
+                          )
+                        : null,
                   ),
-                  child: Icon(
-                    widget.group.isDirect
-                        ? CupertinoIcons.person_fill
-                        : CupertinoIcons.person_3_fill,
-                    color: Colors.white,
-                  ),
+                  child:
+                      (widget.group.avatarPath == null ||
+                          widget.group.avatarPath!.isEmpty)
+                      ? Icon(
+                          widget.group.isDirect
+                              ? CupertinoIcons.person_fill
+                              : CupertinoIcons.person_3_fill,
+                          color: Colors.white,
+                        )
+                      : null,
                 ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: GestureDetector(
-                    onTap: _openDetails,
+                onTap: _openDetails,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -298,22 +373,55 @@ class _ChatPageState extends State<ChatPage> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(CupertinoIcons.reply, size: 16),
+                        Icon(
+                          pendingAttachment != null
+                              ? CupertinoIcons.paperclip
+                              : CupertinoIcons.reply,
+                          size: 16,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text(
-                            replyTo != null
-                                ? 'Reply: $replyTo'
-                                : 'Ek: $pendingAttachment',
-                            style: Theme.of(context).textTheme.bodySmall,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          child: pendingAttachment != null
+                              ? Row(
+                                  children: [
+                                    if (_isImageAttachment(pendingAttachment!))
+                                      Container(
+                                        width: 34,
+                                        height: 34,
+                                        margin: const EdgeInsets.only(right: 8),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(8),
+                                          image: DecorationImage(
+                                            image: NetworkImage(
+                                              _attachmentUrl(pendingAttachment!),
+                                            ),
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
+                                      ),
+                                    Expanded(
+                                      child: Text(
+                                        _formatBytes(pendingAttachmentBytes),
+                                        style:
+                                            Theme.of(context).textTheme.bodySmall,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : Text(
+                                  'Yanıt: $replyTo',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                         ),
                         GestureDetector(
                           onTap: () => setState(() {
                             replyTo = null;
                             pendingAttachment = null;
+                            pendingAttachmentBytes = null;
                           }),
                           child: const Icon(CupertinoIcons.xmark, size: 16),
                         ),
@@ -325,7 +433,7 @@ class _ChatPageState extends State<ChatPage> {
                   children: [
                     FloatingIconButton(
                       icon: CupertinoIcons.plus,
-                      onTap: () => _setAttachment('meeting_notes.pdf'),
+                      onTap: () => unawaited(_pickDocumentAttachment()),
                       size: 42,
                       opacity: 0.58,
                     ),
@@ -344,7 +452,7 @@ class _ChatPageState extends State<ChatPage> {
                           children: [
                             IconButton(
                               onPressed: () =>
-                                  _setAttachment('campus_photo.png'),
+                                  unawaited(_pickImageAttachment()),
                               icon: const Icon(
                                 CupertinoIcons.camera_fill,
                                 size: 18,
@@ -478,24 +586,47 @@ class _MessageBubble extends StatelessWidget {
                       const SizedBox(height: 8),
                     ],
                     if (message.attachment != null) ...[
-                      const TagBadge(
-                        label: 'Ek dosya',
-                        variant: TagBadgeVariant.unread,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        message.attachment!,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 8),
+                      if (_isImageAttachment(message.attachment!)) ...[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            _attachmentUrl(message.attachment!),
+                            height: 170,
+                            width: 170,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Container(
+                                  height: 90,
+                                  width: 170,
+                                  alignment: Alignment.center,
+                                  color: Colors.black.withValues(alpha: 0.08),
+                                  child: const Text('Görsel yüklenemedi'),
+                                ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ] else ...[
+                        const TagBadge(
+                          label: 'Ek dosya',
+                          variant: TagBadgeVariant.unread,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _attachmentLabel(message.attachment!),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 8),
+                      ],
                     ],
-                    Text(
-                      message.message,
-                      style: Theme.of(context).textTheme.bodyLarge!.copyWith(
-                        color: message.isMe ? Colors.white : AppColors.ink,
+                    if (message.message.trim().isNotEmpty) ...[
+                      Text(
+                        message.message,
+                        style: Theme.of(context).textTheme.bodyLarge!.copyWith(
+                          color: message.isMe ? Colors.white : AppColors.ink,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
+                      const SizedBox(height: 6),
+                    ],
                     Text(
                       message.time,
                       style: Theme.of(context).textTheme.bodySmall!.copyWith(
@@ -511,6 +642,41 @@ class _MessageBubble extends StatelessWidget {
       ],
     );
   }
+}
+
+String _attachmentLabel(String raw) {
+  final path = raw.contains(':') ? raw.split(':').last : raw;
+  final normalized = path.replaceAll('\\', '/');
+  final segments = normalized.split('/');
+  return segments.isNotEmpty ? segments.last : raw;
+}
+
+String _formatBytes(int? bytes) {
+  if (bytes == null || bytes <= 0) return 'Dosya';
+  if (bytes < 1024) return '$bytes B';
+  final kb = bytes / 1024;
+  if (kb < 1024) return '${kb.toStringAsFixed(1)} KB';
+  final mb = kb / 1024;
+  return '${mb.toStringAsFixed(1)} MB';
+}
+
+bool _isImageAttachment(String raw) {
+  final path = raw.contains(':') ? raw.split(':').last : raw;
+  final lower = path.toLowerCase();
+  return lower.endsWith('.jpg') ||
+      lower.endsWith('.jpeg') ||
+      lower.endsWith('.png') ||
+      lower.endsWith('.webp') ||
+      lower.endsWith('.heic') ||
+      lower.endsWith('.heif');
+}
+
+String _attachmentUrl(String raw) {
+  if (!raw.contains(':')) return raw;
+  final idx = raw.indexOf(':');
+  final bucket = raw.substring(0, idx);
+  final path = raw.substring(idx + 1);
+  return SupabaseService.client.storage.from(bucket).getPublicUrl(path);
 }
 
 class _MessageSearchSheet extends StatefulWidget {

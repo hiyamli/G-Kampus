@@ -1,5 +1,10 @@
-import 'package:flutter/cupertino.dart';
+import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../../core/supabase/supabase_service.dart';
 import '../../widgets/campus_scaffold.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/hero_card.dart';
@@ -12,10 +17,12 @@ class EditProfilePage extends StatefulWidget {
     super.key,
     required this.initialBio,
     required this.initialAvatarIndex,
+    this.initialAvatarPath,
   });
 
   final String initialBio;
   final int initialAvatarIndex;
+  final String? initialAvatarPath;
 
   @override
   State<EditProfilePage> createState() => _EditProfilePageState();
@@ -24,12 +31,16 @@ class EditProfilePage extends StatefulWidget {
 class _EditProfilePageState extends State<EditProfilePage> {
   late final TextEditingController bioController;
   late int selectedAvatar;
+  final ImagePicker _imagePicker = ImagePicker();
+  String? avatarPath;
+  bool uploadingPhoto = false;
 
   @override
   void initState() {
     super.initState();
     bioController = TextEditingController(text: widget.initialBio);
     selectedAvatar = widget.initialAvatarIndex;
+    avatarPath = widget.initialAvatarPath;
   }
 
   @override
@@ -45,8 +56,42 @@ class _EditProfilePageState extends State<EditProfilePage> {
             ? widget.initialBio
             : bioController.text.trim(),
         avatarIndex: selectedAvatar,
+        avatarPath: avatarPath,
       ),
     );
+  }
+
+  Future<void> _uploadProfilePhoto() async {
+    if (uploadingPhoto) return;
+
+    final selected = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    if (selected == null) return;
+
+    setState(() => uploadingPhoto = true);
+    try {
+      final bytes = await selected.readAsBytes();
+      final ext = selected.name.split('.').last;
+      final uploadedUrl = await SupabaseService.uploadProfilePhoto(
+        bytes: bytes,
+        fileExt: ext,
+      );
+
+      if (!mounted) return;
+      setState(() => avatarPath = uploadedUrl);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profil fotoğrafı güncellendi.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Fotoğraf yüklenemedi: $error')));
+    } finally {
+      if (mounted) setState(() => uploadingPhoto = false);
+    }
   }
 
   @override
@@ -60,49 +105,42 @@ class _EditProfilePageState extends State<EditProfilePage> {
               delegate: SliverChildListDelegate([
                 const HeroCard(
                   title: 'Profili Düzenle',
-                  subtitle:
-                      'Avatar sec, biyografini güncelle ve profil tonunu ayarla.',
-                  badges: [HeroCardBadge(label: '4 avatar secenegi')],
+                  subtitle: 'Profil fotoğrafını yükle ve biyografini güncelle.',
+                  badges: [HeroCardBadge(label: 'Supabase storage')],
                 ),
                 const SizedBox(height: 18),
-                Row(
-                  children: List.generate(
-                    4,
-                    (index) => Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.only(right: index == 3 ? 0 : 12),
-                        child: GestureDetector(
-                          onTap: () => setState(() => selectedAvatar = index),
-                          child: GlassCard(
-                            padding: const EdgeInsets.all(12),
-                            child: AspectRatio(
-                              aspectRatio: 1,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: selectedAvatar == index
-                                      ? Border.all(
-                                          color: const Color(0xFF31A8AD),
-                                          width: 3,
-                                        )
-                                      : null,
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      index.isEven
-                                          ? const Color(0xFF1A2942)
-                                          : const Color(0xFFFABB59),
-                                      index.isEven
-                                          ? const Color(0xFF31A8AD)
-                                          : const Color(0xFFED7568),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
+                GlassCard(
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 24,
+                        backgroundImage:
+                            (avatarPath != null && avatarPath!.isNotEmpty)
+                            ? NetworkImage(avatarPath!)
+                            : null,
+                        child: (avatarPath == null || avatarPath!.isEmpty)
+                            ? const Icon(CupertinoIcons.person_fill)
+                            : null,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          uploadingPhoto
+                              ? 'Fotoğraf yükleniyor...'
+                              : 'Profil fotoğrafını galeriden seç',
+                          style: Theme.of(context).textTheme.bodyMedium,
                         ),
                       ),
-                    ),
+                      SizedBox(
+                        width: 120,
+                        child: PrimaryButton(
+                          label: uploadingPhoto ? 'Bekle' : 'Yükle',
+                          onTap: uploadingPhoto
+                              ? null
+                              : () => unawaited(_uploadProfilePhoto()),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 18),

@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/data/repository_provider.dart';
-import '../../core/models/mock_models.dart';
+import '../../core/data/mock_data.dart';
 import '../../core/supabase/supabase_service.dart';
 import '../../widgets/campus_scaffold.dart';
 import '../../widgets/custom_bottom_nav.dart';
@@ -34,15 +34,14 @@ class _MainShellState extends State<MainShell> {
   final PageController _pageController = PageController();
   int index = 0;
   int dmBadge = 0;
-  int assignmentBadge = 3;
-  int announcementBadge = 2;
-  StudentProfile profile = appRepository.student;
+  int assignmentBadge = 0;
+  int announcementBadge = 0;
   int avatarIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _refreshDmBadge();
+    _refreshAllBadges();
   }
 
   void _refreshDmBadge() {
@@ -50,6 +49,16 @@ class _MainShellState extends State<MainShell> {
       0,
       (sum, count) => sum + count,
     );
+  }
+
+  void _refreshAllBadges() {
+    _refreshDmBadge();
+    assignmentBadge = appRepository.assignments
+        .where((item) => !item.isCompleted && !item.isOverdue)
+        .length;
+    announcementBadge = appRepository.announcements
+        .where((item) => item.isNew)
+        .length;
   }
 
   void _applyBadgeRules(int value) {
@@ -98,15 +107,19 @@ class _MainShellState extends State<MainShell> {
               setState(() => index = 0);
               widget.onLogout();
             },
-            profile: profile,
+            profile: appRepository.student,
             avatarIndex: avatarIndex,
             onProfileChanged: (updatedProfile, updatedAvatar) {
               setState(() {
-                profile = updatedProfile;
+                MockData.setStudent(updatedProfile);
                 avatarIndex = updatedAvatar;
               });
               unawaited(
-                SupabaseService.updateCurrentProfile(bio: updatedProfile.bio),
+                SupabaseService.updateCurrentProfileFields({
+                  'bio': updatedProfile.bio,
+                  if (updatedProfile.avatarPath != null)
+                    'avatar_path': updatedProfile.avatarPath,
+                }),
               );
             },
           ),
@@ -128,7 +141,7 @@ class _MainShellState extends State<MainShell> {
       const HomePage(),
       MessagesPage(
         onDataChanged: () => setState(() {
-          _refreshDmBadge();
+          _refreshAllBadges();
         }),
       ),
       const SchedulePage(),
@@ -159,16 +172,31 @@ class _MainShellState extends State<MainShell> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: LinearGradient(colors: _avatarColors(avatarIndex)),
+                  image:
+                      (appRepository.student.avatarPath != null &&
+                          appRepository.student.avatarPath!.isNotEmpty)
+                      ? DecorationImage(
+                          image: NetworkImage(
+                            appRepository.student.avatarPath!,
+                          ),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
                   border: Border.all(
                     color: Colors.white.withValues(alpha: 0.85),
                   ),
                 ),
-                child: const Icon(Icons.person, size: 20, color: Colors.white),
+                child:
+                    (appRepository.student.avatarPath == null ||
+                        appRepository.student.avatarPath!.isEmpty)
+                    ? const Icon(Icons.person, size: 20, color: Colors.white)
+                    : null,
               ),
             ),
           ),
         ],
       ),
+      showBackButton: false,
       bottomNavigationBar: CustomBottomNav(
         index: index,
         onSelected: _onSelected,

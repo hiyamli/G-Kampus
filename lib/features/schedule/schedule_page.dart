@@ -30,6 +30,7 @@ class _SchedulePageState extends State<SchedulePage> {
   @override
   Widget build(BuildContext context) {
     final visibleSchedules = (_daySchedules[selectedDay] ?? const <int>[])
+        .where((index) => index >= 0 && index < appRepository.schedules.length)
         .map((index) => appRepository.schedules[index])
         .toList();
 

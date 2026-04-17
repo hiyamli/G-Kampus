@@ -34,6 +34,7 @@ class StudentProfile {
     required this.role,
     required this.courseCount,
     required this.notificationsEnabled,
+    this.avatarPath,
   });
 
   final String name;
@@ -45,8 +46,9 @@ class StudentProfile {
   final String role;
   final int courseCount;
   final bool notificationsEnabled;
+  final String? avatarPath;
 
-  StudentProfile copyWith({String? bio}) {
+  StudentProfile copyWith({String? bio, String? avatarPath}) {
     return StudentProfile(
       name: name,
       number: number,
@@ -57,6 +59,7 @@ class StudentProfile {
       role: role,
       courseCount: courseCount,
       notificationsEnabled: notificationsEnabled,
+      avatarPath: avatarPath ?? this.avatarPath,
     );
   }
 
@@ -102,6 +105,7 @@ class StudentProfile {
         'notificationsEnabled',
         'notifications_enabled',
       ], fallback: true),
+      avatarPath: asString(['avatar_path', 'avatarPath'], fallback: ''),
     );
   }
 
@@ -116,6 +120,7 @@ class StudentProfile {
       'role': role,
       'courseCount': courseCount,
       'notificationsEnabled': notificationsEnabled,
+      'avatarPath': avatarPath,
     };
   }
 }
@@ -316,6 +321,7 @@ class CalendarEvent {
 
 class GroupItem {
   const GroupItem({
+    this.id,
     required this.name,
     required this.memberCount,
     required this.muted,
@@ -323,56 +329,67 @@ class GroupItem {
     this.avatarIndex = 0,
     this.isDirect = false,
     this.mutedUntil,
+    this.avatarPath,
   });
 
   final String name;
+  final String? id;
   final String memberCount;
   final bool muted;
   final Color color;
   final int avatarIndex;
   final bool isDirect;
   final String? mutedUntil;
+  final String? avatarPath;
 
   GroupItem copyWith({
     String? name,
+    String? id,
     String? memberCount,
     bool? muted,
     int? avatarIndex,
     bool? isDirect,
     String? mutedUntil,
+    String? avatarPath,
   }) {
     return GroupItem(
       name: name ?? this.name,
+      id: id ?? this.id,
       memberCount: memberCount ?? this.memberCount,
       muted: muted ?? this.muted,
       color: color,
       avatarIndex: avatarIndex ?? this.avatarIndex,
       isDirect: isDirect ?? this.isDirect,
       mutedUntil: mutedUntil ?? this.mutedUntil,
+      avatarPath: avatarPath ?? this.avatarPath,
     );
   }
 
   factory GroupItem.fromJson(Map<String, dynamic> json) {
     return GroupItem(
       name: json['name'] as String,
+      id: json['id'] as String?,
       memberCount: json['memberCount'] as String,
       muted: json['muted'] as bool,
       color: colorFromJson(json['color']),
       avatarIndex: json['avatarIndex'] as int? ?? 0,
       isDirect: json['isDirect'] as bool? ?? false,
       mutedUntil: json['mutedUntil'] as String?,
+      avatarPath: json['avatarPath'] as String?,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
       'name': name,
+      'id': id,
       'memberCount': memberCount,
       'muted': muted,
       'color': colorToJson(color),
       'avatarIndex': avatarIndex,
       'isDirect': isDirect,
       'mutedUntil': mutedUntil,
+      'avatarPath': avatarPath,
     };
   }
 }

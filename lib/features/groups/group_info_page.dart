@@ -1,8 +1,13 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/data/repository_provider.dart';
 import '../../core/models/mock_models.dart';
+import '../../core/supabase/supabase_service.dart';
 import '../../widgets/campus_scaffold.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/hero_card.dart';
@@ -21,6 +26,7 @@ class GroupInfoPage extends StatefulWidget {
 
 class _GroupInfoPageState extends State<GroupInfoPage> {
   late GroupItem group;
+  final ImagePicker _imagePicker = ImagePicker();
 
   void _addSystemMessage(String text) {
     final existing =
@@ -51,11 +57,44 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
   void initState() {
     super.initState();
     group = widget.group;
+    unawaited(_refreshMembers());
+  }
+
+  Future<void> _refreshMembers() async {
+    await SupabaseService.refreshMessagesData();
+    await SupabaseService.loadMembersForGroup(group.name);
+    if (!mounted) return;
+    setState(() {
+      group = appRepository.groups.firstWhere(
+        (item) => item.name == group.name,
+        orElse: () => group,
+      );
+    });
   }
 
   void _syncGroupCount() {
     final members = appRepository.groupMembers[group.name] ?? [];
     group = group.copyWith(memberCount: '${members.length} uye');
+  }
+
+  List<StudentOption> _availableStudentsForAdd() {
+    final existingNumbers =
+        (appRepository.groupMembers[group.name] ?? <StudentOption>[])
+            .map((member) => member.number)
+            .toSet();
+    final existingNames =
+        (appRepository.groupMembers[group.name] ?? <StudentOption>[])
+            .map((member) => member.name)
+            .toSet();
+
+    return appRepository.students
+        .where(
+          (student) =>
+              student.number != appRepository.student.number &&
+              !existingNumbers.contains(student.number) &&
+              !existingNames.contains(student.name),
+        )
+        .toList();
   }
 
   void _showRenameSheet() {
@@ -120,7 +159,10 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
   }
 
   void _showPhotoSheet() {
-    int selected = group.avatarIndex;
+    Uint8List? previewBytes;
+    String? previewUrl = group.avatarPath;
+    bool saving = false;
+
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -138,72 +180,122 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Grup Fotoğrafıni Sec',
+                  'Grup Fotoğrafı',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 14),
-                Row(
-                  children: List.generate(
-                    4,
-                    (index) => Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.only(right: index == 3 ? 0 : 8),
-                        child: GestureDetector(
-                          onTap: () => setModalState(() => selected = index),
-                          child: Container(
-                            height: 62,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(18),
-                              border: selected == index
-                                  ? Border.all(
-                                      color: const Color(0xFF31A8AD),
-                                      width: 2,
-                                    )
-                                  : null,
-                              gradient: LinearGradient(
-                                colors: switch (index) {
-                                  1 => const [
-                                    Color(0xFFFABB59),
-                                    Color(0xFFED7568),
-                                  ],
-                                  2 => const [
-                                    Color(0xFFED7568),
-                                    Color(0xFF1A2942),
-                                  ],
-                                  3 => const [
-                                    Color(0xFF31A8AD),
-                                    Color(0xFFFABB59),
-                                  ],
-                                  _ => const [
-                                    Color(0xFF1A2942),
-                                    Color(0xFF31A8AD),
-                                  ],
-                                },
-                              ),
-                            ),
-                            child: Icon(
-                              group.isDirect
-                                  ? CupertinoIcons.person_fill
-                                  : CupertinoIcons.person_3_fill,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
+                Center(
+                  child: Container(
+                    width: 96,
+                    height: 96,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0x1A1A2942),
+                      image: previewBytes != null
+                          ? DecorationImage(
+                              image: MemoryImage(previewBytes!),
+                              fit: BoxFit.cover,
+                            )
+                          : (previewUrl != null && previewUrl!.isNotEmpty)
+                          ? DecorationImage(
+                              image: NetworkImage(previewUrl!),
+                              fit: BoxFit.cover,
+                            )
+                          : null,
                     ),
+                    child:
+                        (previewBytes == null &&
+                            (previewUrl == null || previewUrl!.isEmpty))
+                        ? const Icon(CupertinoIcons.person_3_fill, size: 34)
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 14),
                 PrimaryButton(
-                  label: 'Fotoğrafı Kaydet',
-                  onTap: () {
-                    setState(() {
-                      group = group.copyWith(avatarIndex: selected);
-                      _persistGroup();
-                      _addSystemMessage('Grup fotografi secimi güncellendi.');
-                    });
-                    Navigator.pop(context);
-                  },
+                  label: 'Fotoğraf Seç',
+                  onTap: saving
+                      ? null
+                      : () async {
+                          final selected = await _imagePicker.pickImage(
+                            source: ImageSource.gallery,
+                            imageQuality: 85,
+                          );
+                          if (selected == null) return;
+                          final bytes = await selected.readAsBytes();
+                          setModalState(() {
+                            previewBytes = bytes;
+                          });
+                        },
+                ),
+                const SizedBox(height: 10),
+                PrimaryButton(
+                  label: 'Fotoğrafı Sil',
+                  onTap: saving
+                      ? null
+                      : () {
+                          setModalState(() {
+                            previewBytes = null;
+                            previewUrl = '';
+                          });
+                        },
+                ),
+                const SizedBox(height: 10),
+                PrimaryButton(
+                  label: saving ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet',
+                  onTap: saving
+                      ? null
+                      : () async {
+                          setModalState(() => saving = true);
+                          try {
+                            String? finalUrl = previewUrl;
+                            if (previewBytes != null) {
+                              final url =
+                                  await SupabaseService.uploadGroupPhoto(
+                                    bytes: previewBytes!,
+                                    fileExt: 'jpg',
+                                  );
+                              finalUrl = url;
+                            }
+
+                            final persisted =
+                                await SupabaseService.setGroupAvatarPath(
+                                  groupName: group.name,
+                                  avatarPath:
+                                      (finalUrl == null || finalUrl.isEmpty)
+                                      ? null
+                                      : finalUrl,
+                                );
+
+                            if (!mounted) return;
+                            setState(() {
+                              group = group.copyWith(
+                                avatarPath:
+                                    (finalUrl == null || finalUrl.isEmpty)
+                                    ? ''
+                                    : finalUrl,
+                              );
+                              _persistGroup();
+                            });
+                            if (!persisted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Fotoğraf yerelde güncellendi. Supabase groups tablosunda avatar_path kolonu ve update izni gerekli.',
+                                  ),
+                                ),
+                              );
+                            }
+                            Navigator.pop(context);
+                          } catch (_) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Grup fotoğrafı kaydedilemedi.'),
+                              ),
+                            );
+                            setModalState(() => saving = false);
+                          }
+                        },
                 ),
               ],
             ),
@@ -237,7 +329,7 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 14),
-                ...appRepository.students.map(
+                ..._availableStudentsForAdd().map(
                   (student) => Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: GestureDetector(
@@ -268,27 +360,42 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                 const SizedBox(height: 6),
                 PrimaryButton(
                   label: 'Üyeyi Ekle',
-                  onTap: () {
-                    if (selectedNumber != null) {
-                      final member = appRepository.students.firstWhere(
-                        (student) => student.number == selectedNumber,
-                      );
-                      final List<StudentOption> members = [
-                        ...(appRepository.groupMembers[group.name] ??
-                            <StudentOption>[]),
-                      ];
-                      if (!members.any(
-                        (student) => student.number == member.number,
-                      )) {
-                        members.add(member);
-                      }
-                      setState(() {
-                        appRepository.groupMembers[group.name] = members;
-                        _syncGroupCount();
-                        _addSystemMessage('${member.name} gruba eklendi.');
-                      });
+                  onTap: () async {
+                    if (selectedNumber == null) {
+                      Navigator.pop(context);
+                      return;
                     }
-                    Navigator.pop(context);
+                    final available = _availableStudentsForAdd();
+                    StudentOption? member;
+                    for (final item in available) {
+                      if (item.number == selectedNumber) {
+                        member = item;
+                        break;
+                      }
+                    }
+                    if (member == null) {
+                      Navigator.pop(context);
+                      return;
+                    }
+
+                    try {
+                      await SupabaseService.addMemberToGroup(
+                        groupName: group.name,
+                        member: member,
+                      );
+                      await _refreshMembers();
+                      if (!mounted) return;
+                      setState(() {
+                        _syncGroupCount();
+                        _addSystemMessage('${member!.name} gruba eklendi.');
+                      });
+                    } catch (error) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Üye eklenemedi: $error')),
+                      );
+                    }
+                    if (mounted) Navigator.pop(context);
                   },
                 ),
               ],
@@ -343,9 +450,27 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
     Navigator.pop(context);
   }
 
+  Future<void> _leaveGroup() async {
+    try {
+      await SupabaseService.leaveGroup(group);
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gruptan ayrılamadı: $error')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final members = appRepository.groupMembers[group.name] ?? [];
+    List<StudentOption> members;
+    try {
+      members = appRepository.groupMembers[group.name] ?? <StudentOption>[];
+    } catch (_) {
+      members = <StudentOption>[];
+    }
 
     return CampusScaffold(
       body: CustomScrollView(
@@ -360,6 +485,34 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                       ? 'Direkt mesaj ayrintilari'
                       : '${group.memberCount} • grup ayarlari ve uye listesi',
                   badges: [HeroCardBadge(label: group.memberCount)],
+                ),
+                const SizedBox(height: 12),
+                Center(
+                  child: Container(
+                    width: 82,
+                    height: 82,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF1A2942), Color(0xFF31A8AD)],
+                      ),
+                      image:
+                          (group.avatarPath != null &&
+                              group.avatarPath!.isNotEmpty)
+                          ? DecorationImage(
+                              image: NetworkImage(group.avatarPath!),
+                              fit: BoxFit.cover,
+                            )
+                          : null,
+                    ),
+                    child:
+                        (group.avatarPath == null || group.avatarPath!.isEmpty)
+                        ? const Icon(
+                            CupertinoIcons.person_3_fill,
+                            color: Colors.white,
+                          )
+                        : null,
+                  ),
                 ),
                 const SizedBox(height: 18),
                 if (!group.isDirect) ...[
@@ -433,6 +586,10 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
                     ),
                   ),
                 ),
+                if (!group.isDirect) ...[
+                  const SizedBox(height: 12),
+                  PrimaryButton(label: 'Gruptan Ayrıl', onTap: _leaveGroup),
+                ],
                 if (!group.isDirect) ...[
                   const SizedBox(height: 18),
                   ...members.map(

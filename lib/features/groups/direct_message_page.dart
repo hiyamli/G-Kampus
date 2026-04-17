@@ -20,7 +20,7 @@ class DirectMessagePage extends StatefulWidget {
 
 class _DirectMessagePageState extends State<DirectMessagePage> {
   final TextEditingController messageController = TextEditingController();
-  String? selectedStudent;
+  String? selectedStudentNumber;
   bool isSending = false;
 
   @override
@@ -31,7 +31,7 @@ class _DirectMessagePageState extends State<DirectMessagePage> {
 
   Future<void> _send() async {
     if (isSending) return;
-    if (selectedStudent == null || messageController.text.trim().isEmpty) {
+    if (selectedStudentNumber == null || messageController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Bir kişi sec ve mesaj yaz.')),
       );
@@ -41,7 +41,7 @@ class _DirectMessagePageState extends State<DirectMessagePage> {
     setState(() => isSending = true);
     try {
       final selected = appRepository.students.firstWhere(
-        (student) => student.name == selectedStudent,
+        (student) => student.number == selectedStudentNumber,
       );
 
       await SupabaseService.createDirectMessage(
@@ -50,9 +50,9 @@ class _DirectMessagePageState extends State<DirectMessagePage> {
       );
 
       final dm = appRepository.groups.firstWhere(
-        (group) => group.name == selectedStudent,
+        (group) => group.name == selected.name,
         orElse: () => GroupItem(
-          name: selectedStudent!,
+          name: selected.name,
           memberCount: 'Direkt mesaj',
           muted: false,
           color: AppColors.teal,
@@ -64,7 +64,7 @@ class _DirectMessagePageState extends State<DirectMessagePage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Mesaj ${selectedStudent!} kişisine gönderildi.'),
+          content: Text('Mesaj ${selected.name} kişisine gönderildi.'),
         ),
       );
       Navigator.of(context).pop(dm);
@@ -105,7 +105,9 @@ class _DirectMessagePageState extends State<DirectMessagePage> {
                         padding: const EdgeInsets.only(bottom: 10),
                         child: GestureDetector(
                           onTap: () =>
-                              setState(() => selectedStudent = student.name),
+                              setState(
+                                () => selectedStudentNumber = student.number,
+                              ),
                           child: GlassCard(
                             child: Row(
                               children: [
@@ -118,7 +120,8 @@ class _DirectMessagePageState extends State<DirectMessagePage> {
                                 ),
                                 IgnorePointer(
                                   child: Checkbox(
-                                    value: selectedStudent == student.name,
+                                    value:
+                                        selectedStudentNumber == student.number,
                                     onChanged: (_) {},
                                   ),
                                 ),

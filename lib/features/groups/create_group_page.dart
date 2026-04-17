@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/data/repository_provider.dart';
 import '../../core/models/mock_models.dart';
@@ -23,6 +26,9 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
   final TextEditingController topicController = TextEditingController();
   final Set<String> selectedStudents = {};
   int selectedAvatar = 0;
+  final ImagePicker _imagePicker = ImagePicker();
+  String? groupPhotoUrl;
+  bool photoUploading = false;
   bool isCreating = false;
 
   @override
@@ -52,6 +58,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
         topic: topicController.text.trim(),
         avatarIndex: selectedAvatar,
         members: members,
+        avatarPath: groupPhotoUrl,
       );
 
       final created = appRepository.groups.firstWhere(
@@ -63,6 +70,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
           color: AppColors.teal,
           avatarIndex: selectedAvatar,
           isDirect: false,
+          avatarPath: groupPhotoUrl,
         ),
       );
 
@@ -81,6 +89,38 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
     }
   }
 
+  Future<void> _pickGroupPhoto() async {
+    if (photoUploading) return;
+    final selected = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    if (selected == null) return;
+
+    setState(() => photoUploading = true);
+    try {
+      final bytes = await selected.readAsBytes();
+      final ext = selected.name.split('.').last;
+      final uploaded = await SupabaseService.uploadGroupPhoto(
+        bytes: bytes,
+        fileExt: ext,
+      );
+
+      if (!mounted) return;
+      setState(() => groupPhotoUrl = uploaded);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Grup fotoğrafı yüklendi.')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Grup fotoğrafı yüklenemedi: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => photoUploading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return CampusScaffold(
@@ -92,7 +132,7 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
               delegate: SliverChildListDelegate([
                 const HeroCard(
                   title: 'Grup Olustur',
-                  subtitle: 'Konu belirle, uyeleri sec ve akışı hemen baslat.',
+                  subtitle: 'Konu belirle, üyeleri seç ve grup fotoğrafı ekle.',
                   badges: [HeroCardBadge(label: 'Study group')],
                 ),
                 const SizedBox(height: 18),
@@ -100,56 +140,41 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
                   child: Column(
                     children: [
                       Row(
-                        children: List.generate(
-                          4,
-                          (index) => Expanded(
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                right: index == 3 ? 0 : 8,
-                              ),
-                              child: GestureDetector(
-                                onTap: () =>
-                                    setState(() => selectedAvatar = index),
-                                child: Container(
-                                  height: 58,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(18),
-                                    border: selectedAvatar == index
-                                        ? Border.all(
-                                            color: AppColors.teal,
-                                            width: 2,
-                                          )
-                                        : null,
-                                    gradient: LinearGradient(
-                                      colors: switch (index) {
-                                        1 => const [
-                                          AppColors.sunrise,
-                                          AppColors.coral,
-                                        ],
-                                        2 => const [
-                                          AppColors.coral,
-                                          AppColors.ink,
-                                        ],
-                                        3 => const [
-                                          AppColors.teal,
-                                          AppColors.sunrise,
-                                        ],
-                                        _ => const [
-                                          AppColors.ink,
-                                          AppColors.teal,
-                                        ],
-                                      },
-                                    ),
-                                  ),
-                                  child: const Icon(
-                                    CupertinoIcons.person_3_fill,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
+                        children: [
+                          CircleAvatar(
+                            radius: 24,
+                            backgroundImage:
+                                (groupPhotoUrl != null &&
+                                    groupPhotoUrl!.isNotEmpty)
+                                ? NetworkImage(groupPhotoUrl!)
+                                : null,
+                            backgroundColor: AppColors.ink.withValues(
+                              alpha: 0.18,
+                            ),
+                            child:
+                                (groupPhotoUrl == null ||
+                                    groupPhotoUrl!.isEmpty)
+                                ? const Icon(CupertinoIcons.person_3_fill)
+                                : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              photoUploading
+                                  ? 'Fotoğraf yükleniyor...'
+                                  : 'Grup fotoğrafı eklemek için yükle',
                             ),
                           ),
-                        ),
+                          SizedBox(
+                            width: 120,
+                            child: PrimaryButton(
+                              label: photoUploading ? 'Bekle' : 'Yükle',
+                              onTap: photoUploading
+                                  ? null
+                                  : () => unawaited(_pickGroupPhoto()),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 12),
                       InputField(
