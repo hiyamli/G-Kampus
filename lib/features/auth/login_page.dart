@@ -20,6 +20,8 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
+  static const _studentLoginDomain = 'students.gkampus.local';
+
   final _identifierController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
@@ -45,8 +47,9 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = true);
 
     try {
+      final email = _resolveLoginEmail(identifier);
       await SupabaseService.client.auth.signInWithPassword(
-        email: identifier, // Assuming email/password for now
+        email: email,
         password: password,
       );
     } on AuthException catch (e) {
@@ -56,6 +59,11 @@ class _LoginPageState extends State<LoginPage> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  String _resolveLoginEmail(String identifier) {
+    if (identifier.contains('@')) return identifier.toLowerCase();
+    return '${identifier.toLowerCase()}@$_studentLoginDomain';
   }
 
   void _showError(String message) {
@@ -119,7 +127,7 @@ class _LoginPageState extends State<LoginPage> {
                       SizedBox(height: compact ? 12 : 16),
                       InputField(
                         controller: _identifierController,
-                        hint: 'E-posta',
+                        hint: 'Okul Numarası',
                         icon: CupertinoIcons.person_crop_circle,
                       ),
                       SizedBox(height: compact ? 10 : 14),

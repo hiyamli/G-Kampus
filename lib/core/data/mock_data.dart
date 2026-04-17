@@ -4,7 +4,7 @@ import '../models/mock_models.dart';
 class MockData {
   const MockData._();
 
-  static const student = StudentProfile(
+  static const defaultStudent = StudentProfile(
     name: 'Zeynep Kaya',
     number: '220401092',
     department: 'Yazilim Muhendisligi',
@@ -16,6 +16,16 @@ class MockData {
     courseCount: 4,
     notificationsEnabled: true,
   );
+
+  static StudentProfile student = defaultStudent;
+
+  static void setStudent(StudentProfile profile) {
+    student = profile;
+  }
+
+  static void resetStudent() {
+    student = defaultStudent;
+  }
 
   static const courses = [
     'Mobil Programlama',

@@ -21,12 +21,15 @@ class _KampusAppState extends State<KampusApp> {
   @override
   void initState() {
     super.initState();
-    _checkAuth();
+    unawaited(_checkAuth());
     _listenAuth();
   }
 
-  void _checkAuth() {
+  Future<void> _checkAuth() async {
     final session = SupabaseService.client.auth.currentSession;
+    if (session != null) {
+      await SupabaseService.loadCurrentProfileToAppState();
+    }
     setState(() {
       _authenticated = session != null;
       _initialized = true;
@@ -34,8 +37,16 @@ class _KampusAppState extends State<KampusApp> {
   }
 
   void _listenAuth() {
-    _authSubscription = SupabaseService.client.auth.onAuthStateChange.listen((data) {
+    _authSubscription = SupabaseService.client.auth.onAuthStateChange.listen((
+      data,
+    ) async {
       final session = data.session;
+      if (session != null) {
+        await SupabaseService.loadCurrentProfileToAppState();
+      } else {
+        SupabaseService.resetAppProfile();
+      }
+      if (!mounted) return;
       setState(() {
         _authenticated = session != null;
       });
@@ -52,9 +63,7 @@ class _KampusAppState extends State<KampusApp> {
   Widget build(BuildContext context) {
     if (!_initialized) {
       return const MaterialApp(
-        home: Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        ),
+        home: Scaffold(body: Center(child: CircularProgressIndicator())),
       );
     }
 

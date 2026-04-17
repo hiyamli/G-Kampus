@@ -61,16 +61,47 @@ class StudentProfile {
   }
 
   factory StudentProfile.fromJson(Map<String, dynamic> json) {
+    String asString(List<String> keys, {String fallback = '-'}) {
+      for (final key in keys) {
+        final value = json[key];
+        if (value is String && value.trim().isNotEmpty) return value;
+      }
+      return fallback;
+    }
+
+    int asInt(List<String> keys, {int fallback = 0}) {
+      for (final key in keys) {
+        final value = json[key];
+        if (value is int) return value;
+        if (value is String) {
+          final parsed = int.tryParse(value);
+          if (parsed != null) return parsed;
+        }
+      }
+      return fallback;
+    }
+
+    bool asBool(List<String> keys, {bool fallback = true}) {
+      for (final key in keys) {
+        final value = json[key];
+        if (value is bool) return value;
+      }
+      return fallback;
+    }
+
     return StudentProfile(
-      name: json['name'] as String,
-      number: json['number'] as String,
-      department: json['department'] as String,
-      grade: json['grade'] as String,
-      gpa: json['gpa'] as String,
-      bio: json['bio'] as String,
-      role: json['role'] as String,
-      courseCount: json['courseCount'] as int,
-      notificationsEnabled: json['notificationsEnabled'] as bool,
+      name: asString(['name', 'full_name'], fallback: 'Öğrenci'),
+      number: asString(['number', 'student_number'], fallback: '-'),
+      department: asString(['department'], fallback: '-'),
+      grade: asString(['grade'], fallback: '-'),
+      gpa: asString(['gpa'], fallback: '-'),
+      bio: asString(['bio'], fallback: ''),
+      role: asString(['role'], fallback: 'Öğrenci'),
+      courseCount: asInt(['courseCount', 'course_count'], fallback: 0),
+      notificationsEnabled: asBool([
+        'notificationsEnabled',
+        'notifications_enabled',
+      ], fallback: true),
     );
   }
 
