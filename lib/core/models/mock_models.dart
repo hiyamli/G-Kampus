@@ -2,6 +2,15 @@ import 'package:flutter/material.dart';
 
 enum ScopeType { universite, fakulte, bolum, ders }
 
+enum ChatSendStatus { sending, sent, failed }
+
+ChatSendStatus chatSendStatusFromString(String? value) {
+  return ChatSendStatus.values.firstWhere(
+    (item) => item.name == value,
+    orElse: () => ChatSendStatus.sent,
+  );
+}
+
 ScopeType scopeTypeFromString(String value) {
   return ScopeType.values.firstWhere(
     (item) => item.name == value,
@@ -396,6 +405,8 @@ class GroupItem {
 
 class ChatMessage {
   const ChatMessage({
+    this.id,
+    this.localTempId,
     required this.sender,
     required this.message,
     required this.time,
@@ -403,8 +414,12 @@ class ChatMessage {
     this.replyTo,
     this.attachment,
     this.isSystem = false,
+    this.createdAt,
+    this.sendStatus = ChatSendStatus.sent,
   });
 
+  final String? id;
+  final String? localTempId;
   final String sender;
   final String message;
   final String time;
@@ -412,9 +427,41 @@ class ChatMessage {
   final String? replyTo;
   final String? attachment;
   final bool isSystem;
+  final DateTime? createdAt;
+  final ChatSendStatus sendStatus;
+
+  ChatMessage copyWith({
+    String? id,
+    String? localTempId,
+    String? sender,
+    String? message,
+    String? time,
+    bool? isMe,
+    String? replyTo,
+    String? attachment,
+    bool? isSystem,
+    DateTime? createdAt,
+    ChatSendStatus? sendStatus,
+  }) {
+    return ChatMessage(
+      id: id ?? this.id,
+      localTempId: localTempId ?? this.localTempId,
+      sender: sender ?? this.sender,
+      message: message ?? this.message,
+      time: time ?? this.time,
+      isMe: isMe ?? this.isMe,
+      replyTo: replyTo ?? this.replyTo,
+      attachment: attachment ?? this.attachment,
+      isSystem: isSystem ?? this.isSystem,
+      createdAt: createdAt ?? this.createdAt,
+      sendStatus: sendStatus ?? this.sendStatus,
+    );
+  }
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     return ChatMessage(
+      id: json['id'] as String?,
+      localTempId: json['localTempId'] as String?,
       sender: json['sender'] as String,
       message: json['message'] as String,
       time: json['time'] as String,
@@ -422,11 +469,15 @@ class ChatMessage {
       replyTo: json['replyTo'] as String?,
       attachment: json['attachment'] as String?,
       isSystem: json['isSystem'] as bool? ?? false,
+      createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? ''),
+      sendStatus: chatSendStatusFromString(json['sendStatus'] as String?),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
+      'localTempId': localTempId,
       'sender': sender,
       'message': message,
       'time': time,
@@ -434,6 +485,8 @@ class ChatMessage {
       'replyTo': replyTo,
       'attachment': attachment,
       'isSystem': isSystem,
+      'createdAt': createdAt?.toIso8601String(),
+      'sendStatus': sendStatus.name,
     };
   }
 }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/data/repository_provider.dart';
@@ -30,23 +31,40 @@ class _ChatPageState extends State<ChatPage> {
   final ScrollController scrollController = ScrollController();
   late List<ChatMessage> messages;
   final ImagePicker _imagePicker = ImagePicker();
+  StreamSubscription<String>? _conversationSubscription;
   String? replyTo;
   String? pendingAttachment;
   int? pendingAttachmentBytes;
+  bool _showJumpToBottom = false;
 
   @override
   void initState() {
     super.initState();
     _reloadMessagesFromRepository();
+    scrollController.addListener(_onScroll);
+    unawaited(_bindRealtime());
     unawaited(_refreshFromDatabase());
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
   }
 
-  Future<void> _refreshFromDatabase() async {
+  Future<void> _bindRealtime() async {
+    await SupabaseService.ensureConversationRealtime();
+    _conversationSubscription = SupabaseService.conversationEvents.listen((
+      name,
+    ) {
+      if (name != '*' && name != widget.group.name) return;
+      unawaited(_refreshFromDatabase(keepScrollPosition: true));
+    });
+  }
+
+  Future<void> _refreshFromDatabase({bool keepScrollPosition = false}) async {
+    final wasNearBottom = _isNearBottom();
     await SupabaseService.loadConversationForGroup(widget.group.name);
     if (!mounted) return;
     setState(_reloadMessagesFromRepository);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    if (!keepScrollPosition || wasNearBottom) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    }
   }
 
   void _reloadMessagesFromRepository() {
@@ -57,9 +75,25 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
+    _conversationSubscription?.cancel();
+    scrollController.removeListener(_onScroll);
     messageController.dispose();
     scrollController.dispose();
     super.dispose();
+  }
+
+  bool _isNearBottom() {
+    if (!scrollController.hasClients) return true;
+    return (scrollController.position.maxScrollExtent -
+            scrollController.offset) <
+        120;
+  }
+
+  void _onScroll() {
+    if (!scrollController.hasClients) return;
+    final shouldShow = !_isNearBottom();
+    if (shouldShow == _showJumpToBottom) return;
+    setState(() => _showJumpToBottom = shouldShow);
   }
 
   StudentProfile get _directProfile {
@@ -166,9 +200,9 @@ class _ChatPageState extends State<ChatPage> {
       orElse: () => widget.group,
     );
 
-    final leftGroup = await Navigator.of(
-      context,
-    ).push<bool>(MaterialPageRoute(builder: (_) => GroupInfoPage(group: latest)));
+    final leftGroup = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => GroupInfoPage(group: latest)),
+    );
 
     if (leftGroup == true && mounted) {
       Navigator.of(context).pop();
@@ -187,28 +221,83 @@ class _ChatPageState extends State<ChatPage> {
     final text = messageController.text.trim();
     if (text.isEmpty && pendingAttachment == null) return;
 
+    final localTempId = DateTime.now().microsecondsSinceEpoch.toString();
+    final optimistic = ChatMessage(
+      localTempId: localTempId,
+      sender: appRepository.student.name,
+      message: text,
+      time: TimeOfDay.now().format(context),
+      isMe: true,
+      replyTo: replyTo,
+      attachment: pendingAttachment,
+      createdAt: DateTime.now(),
+      sendStatus: ChatSendStatus.sending,
+    );
+
+    setState(() {
+      messages = [...messages, optimistic];
+      messageController.clear();
+      replyTo = null;
+      pendingAttachment = null;
+      pendingAttachmentBytes = null;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+
     try {
       await SupabaseService.sendMessage(
         groupName: widget.group.name,
         message: text,
-        replyTo: replyTo,
-        attachment: pendingAttachment,
+        replyTo: optimistic.replyTo,
+        attachment: optimistic.attachment,
       );
 
       if (!mounted) return;
-      setState(() {
-        _reloadMessagesFromRepository();
-        messageController.clear();
-        replyTo = null;
-        pendingAttachment = null;
-        pendingAttachmentBytes = null;
-      });
+      setState(_reloadMessagesFromRepository);
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Mesaj gönderilemedi: $error')));
+      final failedIndex = messages.lastIndexWhere(
+        (item) => item.localTempId == localTempId,
+      );
+      if (failedIndex != -1) {
+        setState(() {
+          messages[failedIndex] = messages[failedIndex].copyWith(
+            sendStatus: ChatSendStatus.failed,
+          );
+        });
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Mesaj gönderilemedi. Tekrar deneyin. $error')),
+      );
+    }
+  }
+
+  Future<void> _retryFailedMessage(ChatMessage failed) async {
+    if (failed.sendStatus != ChatSendStatus.failed) return;
+    final index = messages.indexWhere(
+      (item) => item.localTempId == failed.localTempId,
+    );
+    if (index == -1) return;
+
+    setState(() {
+      messages[index] = failed.copyWith(sendStatus: ChatSendStatus.sending);
+    });
+
+    try {
+      await SupabaseService.sendMessage(
+        groupName: widget.group.name,
+        message: failed.message,
+        replyTo: failed.replyTo,
+        attachment: failed.attachment,
+      );
+      if (!mounted) return;
+      setState(_reloadMessagesFromRepository);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        messages[index] = failed.copyWith(sendStatus: ChatSendStatus.failed);
+      });
     }
   }
 
@@ -216,6 +305,15 @@ class _ChatPageState extends State<ChatPage> {
     LongPressStartDetails details,
     ChatMessage message,
   ) async {
+    final menuItems = <PopupMenuEntry<String>>[
+      const PopupMenuItem(value: 'reply', child: Text('Mesaj Cevapla')),
+      const PopupMenuItem(value: 'forward', child: Text('Mesaj İlet')),
+      const PopupMenuItem(value: 'copy', child: Text('Kopyala')),
+      const PopupMenuItem(value: 'delete', child: Text('Mesajı Sil')),
+      if (message.sendStatus == ChatSendStatus.failed)
+        const PopupMenuItem(value: 'retry', child: Text('Tekrar Gönder')),
+    ];
+
     final selected = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(
@@ -226,10 +324,7 @@ class _ChatPageState extends State<ChatPage> {
       ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       color: Colors.white.withValues(alpha: 0.98),
-      items: const [
-        PopupMenuItem(value: 'reply', child: Text('Mesaj Cevapla')),
-        PopupMenuItem(value: 'forward', child: Text('Mesaj İlet')),
-      ],
+      items: menuItems,
     );
 
     if (selected == 'reply') {
@@ -237,6 +332,90 @@ class _ChatPageState extends State<ChatPage> {
     }
     if (selected == 'forward' && mounted) {
       await _showForwardSheet(message);
+    }
+    if (selected == 'copy') {
+      await Clipboard.setData(ClipboardData(text: message.message));
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Mesaj kopyalandı.')));
+    }
+    if (selected == 'retry') {
+      await _retryFailedMessage(message);
+    }
+    if (selected == 'delete') {
+      await _showDeleteMessageActions(message);
+    }
+  }
+
+  Future<void> _showDeleteMessageActions(ChatMessage message) async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 6),
+            ListTile(
+              leading: const Icon(CupertinoIcons.delete_solid),
+              title: const Text('Benden Sil'),
+              onTap: () => Navigator.of(context).pop('me'),
+            ),
+            if (message.isMe)
+              ListTile(
+                leading: const Icon(CupertinoIcons.trash),
+                title: const Text('Herkesten Sil'),
+                onTap: () => Navigator.of(context).pop('all'),
+              ),
+          ],
+        ),
+      ),
+    );
+
+    if (selected == null || !mounted) return;
+
+    if (selected == 'me') {
+      try {
+        await SupabaseService.deleteMessageForMe(
+          groupName: widget.group.name,
+          message: message,
+        );
+        if (!mounted) return;
+        setState(_reloadMessagesFromRepository);
+      } catch (error) {
+        if (message.id == null && message.localTempId != null) {
+          setState(() {
+            messages = messages
+                .where((item) => item.localTempId != message.localTempId)
+                .toList();
+          });
+          return;
+        }
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Mesaj silinemedi: $error')));
+      }
+      return;
+    }
+
+    if (selected == 'all') {
+      try {
+        await SupabaseService.deleteMessageForEveryone(
+          groupName: widget.group.name,
+          message: message,
+        );
+        await SupabaseService.loadConversationForGroup(widget.group.name);
+        if (!mounted) return;
+        setState(_reloadMessagesFromRepository);
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Mesaj herkesten silinemedi. Policy gerekir: $error'),
+          ),
+        );
+      }
     }
   }
 
@@ -271,231 +450,421 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  List<_ChatTimelineEntry> _timelineEntries() {
+    final entries = <_ChatTimelineEntry>[];
+    DateTime? previousDate;
+    final unreadCount =
+        appRepository.unreadConversationCounts[widget.group.name] ?? 0;
+    final unreadStartIndex = unreadCount > 0
+        ? (messages.length - unreadCount).clamp(0, messages.length)
+        : -1;
+
+    for (var index = 0; index < messages.length; index++) {
+      final message = messages[index];
+      final messageDate = _resolveMessageDate(message);
+      if (messageDate != null) {
+        if (previousDate == null ||
+            previousDate.year != messageDate.year ||
+            previousDate.month != messageDate.month ||
+            previousDate.day != messageDate.day) {
+          entries.add(_ChatTimelineEntry.date(_formatDateLabel(messageDate)));
+          previousDate = messageDate;
+        }
+      }
+
+      if (index == unreadStartIndex) {
+        entries.add(const _ChatTimelineEntry.unread('Okunmayan Mesajlar'));
+      }
+
+      entries.add(_ChatTimelineEntry.message(message));
+    }
+
+    return entries;
+  }
+
+  DateTime? _resolveMessageDate(ChatMessage message) {
+    if (message.createdAt != null) return message.createdAt!.toLocal();
+    final now = DateTime.now();
+    final parts = message.time.split(':');
+    if (parts.length != 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return null;
+    return DateTime(now.year, now.month, now.day, hour, minute);
+  }
+
+  String _formatDateLabel(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final candidate = DateTime(date.year, date.month, date.day);
+    final diff = today.difference(candidate).inDays;
+    if (diff == 0) return 'Bugün';
+    if (diff == 1) return 'Dün';
+    return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final timeline = _timelineEntries();
+    final canSend =
+        messageController.text.trim().isNotEmpty || pendingAttachment != null;
     return CampusScaffold(
-      body: Column(
+      body: Stack(
         children: [
-          const SizedBox(height: 28),
-          GlassCard(
-            child: Row(
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [widget.group.color, AppColors.ink],
-                    ),
-                    borderRadius: BorderRadius.circular(18),
-                    image:
-                        (widget.group.avatarPath != null &&
-                            widget.group.avatarPath!.isNotEmpty)
-                        ? DecorationImage(
-                            image: NetworkImage(widget.group.avatarPath!),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
-                  ),
-                  child:
-                      (widget.group.avatarPath == null ||
-                          widget.group.avatarPath!.isEmpty)
-                      ? Icon(
-                          widget.group.isDirect
-                              ? CupertinoIcons.person_fill
-                              : CupertinoIcons.person_3_fill,
-                          color: Colors.white,
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: GestureDetector(
-                onTap: _openDetails,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.group.name,
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          widget.group.memberCount,
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                FloatingIconButton(
-                  icon: CupertinoIcons.search,
-                  onTap: _searchMessages,
-                  size: 44,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: ListView.separated(
-              controller: scrollController,
-              padding: const EdgeInsets.only(bottom: 18),
-              itemBuilder: (context, index) {
-                final message = messages[index];
-                if (message.isSystem) {
-                  return _MessageBubble(message: message);
-                }
-                return GestureDetector(
-                  onLongPressStart: (details) =>
-                      _showMessageActions(details, message),
-                  child: _MessageBubble(message: message),
-                );
-              },
-              separatorBuilder: (context, index) => const SizedBox(height: 12),
-              itemCount: messages.length,
-            ),
-          ),
-          GlassCard(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Column(
-              children: [
-                if (replyTo != null || pendingAttachment != null)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.sunrise.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          pendingAttachment != null
-                              ? CupertinoIcons.paperclip
-                              : CupertinoIcons.reply,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: pendingAttachment != null
-                              ? Row(
-                                  children: [
-                                    if (_isImageAttachment(pendingAttachment!))
-                                      Container(
-                                        width: 34,
-                                        height: 34,
-                                        margin: const EdgeInsets.only(right: 8),
-                                        decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(8),
-                                          image: DecorationImage(
-                                            image: NetworkImage(
-                                              _attachmentUrl(pendingAttachment!),
-                                            ),
-                                            fit: BoxFit.cover,
-                                          ),
-                                        ),
-                                      ),
-                                    Expanded(
-                                      child: Text(
-                                        _formatBytes(pendingAttachmentBytes),
-                                        style:
-                                            Theme.of(context).textTheme.bodySmall,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              : Text(
-                                  'Yanıt: $replyTo',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                        ),
-                        GestureDetector(
-                          onTap: () => setState(() {
-                            replyTo = null;
-                            pendingAttachment = null;
-                            pendingAttachmentBytes = null;
-                          }),
-                          child: const Icon(CupertinoIcons.xmark, size: 16),
-                        ),
-                      ],
-                    ),
-                  ),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+          Column(
+            children: [
+              const SizedBox(height: 28),
+              GlassCard(
+                child: Row(
                   children: [
-                    FloatingIconButton(
-                      icon: CupertinoIcons.plus,
-                      onTap: () => unawaited(_pickDocumentAttachment()),
-                      size: 42,
-                      opacity: 0.58,
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [widget.group.color, AppColors.ink],
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                        image:
+                            (widget.group.avatarPath != null &&
+                                widget.group.avatarPath!.isNotEmpty)
+                            ? DecorationImage(
+                                image: NetworkImage(widget.group.avatarPath!),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                      ),
+                      child:
+                          (widget.group.avatarPath == null ||
+                              widget.group.avatarPath!.isEmpty)
+                          ? Icon(
+                              widget.group.isDirect
+                                  ? CupertinoIcons.person_fill
+                                  : CupertinoIcons.person_3_fill,
+                              color: Colors.white,
+                            )
+                          : null,
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 14),
                     Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.52),
-                          borderRadius: BorderRadius.circular(22),
-                        ),
-                        child: Row(
+                      child: GestureDetector(
+                        onTap: _openDetails,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            IconButton(
-                              onPressed: () =>
-                                  unawaited(_pickImageAttachment()),
-                              icon: const Icon(
-                                CupertinoIcons.camera_fill,
-                                size: 18,
-                              ),
-                            ),
-                            Expanded(
-                              child: TextField(
-                                controller: messageController,
-                                minLines: 1,
-                                maxLines: 4,
-                                decoration: const InputDecoration(
-                                  hintText: 'Mesaj',
-                                  border: InputBorder.none,
-                                  enabledBorder: InputBorder.none,
-                                  focusedBorder: InputBorder.none,
-                                  filled: false,
-                                  contentPadding: EdgeInsets.symmetric(
-                                    vertical: 10,
+                            Text(
+                              widget.group.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.15,
                                   ),
-                                ),
-                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              widget.group.memberCount,
+                              style: Theme.of(
+                                context,
+                              ).textTheme.bodyMedium?.copyWith(fontSize: 13),
                             ),
                           ],
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      width: 42,
-                      height: 42,
-                      child: FloatingActionButton(
-                        heroTag: null,
-                        elevation: 0,
-                        onPressed: () => unawaited(_sendMessage()),
-                        child: const Icon(CupertinoIcons.arrow_up, size: 18),
-                      ),
+                    FloatingIconButton(
+                      icon: CupertinoIcons.search,
+                      onTap: _searchMessages,
+                      size: 44,
                     ),
                   ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollController,
+                  padding: const EdgeInsets.only(bottom: 12),
+                  itemBuilder: (context, index) {
+                    final entry = timeline[index];
+                    if (entry.type == _ChatTimelineType.date) {
+                      return _TimelineChip(label: entry.label!);
+                    }
+                    if (entry.type == _ChatTimelineType.unread) {
+                      return _UnreadDivider(label: entry.label!);
+                    }
+                    final message = entry.message!;
+                    if (message.isSystem) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _MessageBubble(message: message),
+                      );
+                    }
+                    return GestureDetector(
+                      onLongPressStart: (details) =>
+                          _showMessageActions(details, message),
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _MessageBubble(message: message),
+                      ),
+                    );
+                  },
+                  itemCount: timeline.length,
+                ),
+              ),
+              GlassCard(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                child: Column(
+                  children: [
+                    if (replyTo != null || pendingAttachment != null)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.sunrise.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              pendingAttachment != null
+                                  ? CupertinoIcons.paperclip
+                                  : CupertinoIcons.reply,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: pendingAttachment != null
+                                  ? Row(
+                                      children: [
+                                        if (_isImageAttachment(
+                                          pendingAttachment!,
+                                        ))
+                                          Container(
+                                            width: 34,
+                                            height: 34,
+                                            margin: const EdgeInsets.only(
+                                              right: 8,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              image: DecorationImage(
+                                                image: NetworkImage(
+                                                  _attachmentUrl(
+                                                    pendingAttachment!,
+                                                  ),
+                                                ),
+                                                fit: BoxFit.cover,
+                                              ),
+                                            ),
+                                          ),
+                                        Expanded(
+                                          child: Text(
+                                            _formatBytes(
+                                              pendingAttachmentBytes,
+                                            ),
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.bodySmall,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : Text(
+                                      'Yanıt: $replyTo',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                            ),
+                            GestureDetector(
+                              onTap: () => setState(() {
+                                replyTo = null;
+                                pendingAttachment = null;
+                                pendingAttachmentBytes = null;
+                              }),
+                              child: const Icon(CupertinoIcons.xmark, size: 16),
+                            ),
+                          ],
+                        ),
+                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        FloatingIconButton(
+                          icon: CupertinoIcons.plus,
+                          onTap: () => unawaited(_pickDocumentAttachment()),
+                          size: 42,
+                          opacity: 0.58,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.52),
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                            child: Row(
+                              children: [
+                                IconButton(
+                                  onPressed: () =>
+                                      unawaited(_pickImageAttachment()),
+                                  icon: const Icon(
+                                    CupertinoIcons.camera_fill,
+                                    size: 18,
+                                  ),
+                                ),
+                                Expanded(
+                                  child: TextField(
+                                    controller: messageController,
+                                    onChanged: (_) => setState(() {}),
+                                    minLines: 1,
+                                    maxLines: 4,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      height: 1.3,
+                                    ),
+                                    decoration: const InputDecoration(
+                                      hintText: 'Mesaj',
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                      filled: false,
+                                      contentPadding: EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 40,
+                          height: 40,
+                          child: FloatingActionButton(
+                            heroTag: null,
+                            elevation: 0,
+                            onPressed: canSend
+                                ? () => unawaited(_sendMessage())
+                                : null,
+                            child: Icon(
+                              canSend
+                                  ? CupertinoIcons.arrow_up
+                                  : CupertinoIcons.mic_fill,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
           ),
-          const SizedBox(height: 14),
+          if (_showJumpToBottom)
+            Positioned(
+              right: 10,
+              bottom: 100,
+              child: FloatingActionButton.small(
+                heroTag: null,
+                onPressed: _scrollToBottom,
+                child: const Icon(CupertinoIcons.chevron_down),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+enum _ChatTimelineType { date, unread, message }
+
+class _ChatTimelineEntry {
+  const _ChatTimelineEntry._({required this.type, this.label, this.message});
+
+  const _ChatTimelineEntry.date(String label)
+    : this._(type: _ChatTimelineType.date, label: label);
+  const _ChatTimelineEntry.unread(String label)
+    : this._(type: _ChatTimelineType.unread, label: label);
+  const _ChatTimelineEntry.message(ChatMessage message)
+    : this._(type: _ChatTimelineType.message, message: message);
+
+  final _ChatTimelineType type;
+  final String? label;
+  final ChatMessage? message;
+}
+
+class _TimelineChip extends StatelessWidget {
+  const _TimelineChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.52),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(fontSize: 11),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UnreadDivider extends StatelessWidget {
+  const _UnreadDivider({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 4, 6, 8),
+      child: Row(
+        children: [
+          const Expanded(child: Divider()),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(fontSize: 11),
+          ),
+          const SizedBox(width: 8),
+          const Expanded(child: Divider()),
         ],
       ),
     );
@@ -540,7 +909,9 @@ class _MessageBubble extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 6, left: 8),
             child: Text(
               message.sender,
-              style: Theme.of(context).textTheme.bodySmall,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontSize: 11.5),
             ),
           ),
         Row(
@@ -551,8 +922,8 @@ class _MessageBubble extends StatelessWidget {
           children: [
             if (!message.isMe)
               Container(
-                width: 34,
-                height: 34,
+                width: 30,
+                height: 30,
                 margin: const EdgeInsets.only(right: 8),
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
@@ -562,78 +933,130 @@ class _MessageBubble extends StatelessWidget {
                 ),
               ),
             Flexible(
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: bubbleColor,
-                  borderRadius: BorderRadius.circular(20),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.74,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (message.replyTo != null) ...[
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Text(
-                          message.replyTo!,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-                    if (message.attachment != null) ...[
-                      if (_isImageAttachment(message.attachment!)) ...[
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.network(
-                            _attachmentUrl(message.attachment!),
-                            height: 170,
-                            width: 170,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) =>
-                                Container(
-                                  height: 90,
-                                  width: 170,
-                                  alignment: Alignment.center,
-                                  color: Colors.black.withValues(alpha: 0.08),
-                                  child: const Text('Görsel yüklenemedi'),
-                                ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 11,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: bubbleColor,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(18),
+                      topRight: const Radius.circular(18),
+                      bottomLeft: Radius.circular(message.isMe ? 18 : 6),
+                      bottomRight: Radius.circular(message.isMe ? 6 : 18),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (message.replyTo != null) ...[
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            message.replyTo!,
+                            style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ),
                         const SizedBox(height: 8),
-                      ] else ...[
-                        const TagBadge(
-                          label: 'Ek dosya',
-                          variant: TagBadgeVariant.unread,
+                      ],
+                      if (message.attachment != null) ...[
+                        if (_isImageAttachment(message.attachment!)) ...[
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.network(
+                              _attachmentUrl(message.attachment!),
+                              height: 170,
+                              width: 170,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Container(
+                                    height: 90,
+                                    width: 170,
+                                    alignment: Alignment.center,
+                                    color: Colors.black.withValues(alpha: 0.08),
+                                    child: const Text('Görsel yüklenemedi'),
+                                  ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ] else ...[
+                          const TagBadge(
+                            label: 'Ek dosya',
+                            variant: TagBadgeVariant.unread,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _attachmentLabel(message.attachment!),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                      ],
+                      if (message.message.trim().isNotEmpty) ...[
+                        SelectableText(
+                          message.message,
+                          style: Theme.of(context).textTheme.bodyLarge
+                              ?.copyWith(
+                                fontSize: 14.5,
+                                height: 1.2,
+                                color: message.isMe
+                                    ? Colors.white
+                                    : AppColors.ink,
+                                fontStyle:
+                                    message.message.trim() == 'Bu mesaj silindi'
+                                    ? FontStyle.italic
+                                    : FontStyle.normal,
+                              ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 4),
+                      ],
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            message.time,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  fontSize: 10.5,
+                                  color: message.isMe
+                                      ? Colors.white70
+                                      : AppColors.slate,
+                                ),
+                          ),
+                          if (message.isMe) ...[
+                            const SizedBox(width: 4),
+                            Icon(
+                              _sendStatusIcon(message.sendStatus),
+                              size: 12,
+                              color: message.sendStatus == ChatSendStatus.failed
+                                  ? AppColors.coral
+                                  : Colors.white70,
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (message.sendStatus == ChatSendStatus.failed) ...[
+                        const SizedBox(height: 4),
                         Text(
-                          _attachmentLabel(message.attachment!),
-                          style: Theme.of(context).textTheme.bodySmall,
+                          'Gönderilemedi',
+                          style: Theme.of(context).textTheme.bodySmall!
+                              .copyWith(
+                                color: AppColors.coral,
+                                fontWeight: FontWeight.w600,
+                              ),
                         ),
-                        const SizedBox(height: 8),
                       ],
                     ],
-                    if (message.message.trim().isNotEmpty) ...[
-                      Text(
-                        message.message,
-                        style: Theme.of(context).textTheme.bodyLarge!.copyWith(
-                          color: message.isMe ? Colors.white : AppColors.ink,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                    ],
-                    Text(
-                      message.time,
-                      style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                        color: message.isMe ? Colors.white70 : AppColors.slate,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -642,6 +1065,14 @@ class _MessageBubble extends StatelessWidget {
       ],
     );
   }
+}
+
+IconData _sendStatusIcon(ChatSendStatus status) {
+  return switch (status) {
+    ChatSendStatus.sending => CupertinoIcons.clock,
+    ChatSendStatus.sent => CupertinoIcons.check_mark,
+    ChatSendStatus.failed => CupertinoIcons.exclamationmark_circle,
+  };
 }
 
 String _attachmentLabel(String raw) {

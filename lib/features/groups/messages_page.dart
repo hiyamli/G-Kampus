@@ -27,19 +27,35 @@ class MessagesPage extends StatefulWidget {
 class _MessagesPageState extends State<MessagesPage> {
   bool expanded = false;
   bool _loadingPreviews = false;
+  String _query = '';
   Timer? _pendingDeleteTimer;
+  Timer? _realtimeDebounce;
   _ConversationSnapshot? _pendingSnapshot;
+  StreamSubscription<String>? _conversationSubscription;
 
   @override
   void initState() {
     super.initState();
     _ensurePreviewsLoaded();
+    unawaited(_bindRealtime());
   }
 
   @override
   void dispose() {
     _pendingDeleteTimer?.cancel();
+    _realtimeDebounce?.cancel();
+    _conversationSubscription?.cancel();
     super.dispose();
+  }
+
+  Future<void> _bindRealtime() async {
+    await SupabaseService.ensureConversationRealtime();
+    _conversationSubscription = SupabaseService.conversationEvents.listen((_) {
+      _realtimeDebounce?.cancel();
+      _realtimeDebounce = Timer(const Duration(milliseconds: 400), () async {
+        await _ensurePreviewsLoaded();
+      });
+    });
   }
 
   Future<void> _ensurePreviewsLoaded() async {
@@ -53,7 +69,15 @@ class _MessagesPageState extends State<MessagesPage> {
   }
 
   List<GroupItem> _sortedGroups() {
-    final list = List<GroupItem>.from(appRepository.groups);
+    final loweredQuery = _query.trim().toLowerCase();
+    final list = List<GroupItem>.from(
+      appRepository.groups.where((group) {
+        if (loweredQuery.isEmpty) return true;
+        final preview = _conversationPreviewText(group).toLowerCase();
+        return group.name.toLowerCase().contains(loweredQuery) ||
+            preview.contains(loweredQuery);
+      }),
+    );
     list.sort((a, b) {
       final aPinned = MockData.conversationPinned[a.name] ?? false;
       final bPinned = MockData.conversationPinned[b.name] ?? false;
@@ -154,7 +178,7 @@ class _MessagesPageState extends State<MessagesPage> {
     _pendingSnapshot = _ConversationSnapshot.fromGroup(group);
 
     setState(() {
-      SupabaseService.removeConversationLocal(group.name);
+      SupabaseService.hideConversationLocally(group.name);
     });
     widget.onDataChanged?.call();
 
@@ -183,7 +207,7 @@ class _MessagesPageState extends State<MessagesPage> {
       final snapshot = _pendingSnapshot;
       _pendingSnapshot = null;
       if (snapshot == null) return;
-      await SupabaseService.hardDeleteConversation(snapshot.group);
+      await SupabaseService.deleteConversationForCurrentUser(snapshot.group);
       if (!mounted) return;
       setState(() {});
       widget.onDataChanged?.call();
@@ -232,14 +256,51 @@ class _MessagesPageState extends State<MessagesPage> {
               title: 'DM Kutusu',
               subtitle: 'Gruplar ve direkt mesajlar',
             ),
-            const SizedBox(height: 14),
-            ..._sortedGroups().map(
-              (group) => _GroupCard(
-                group: group,
-                onTap: () => _openChat(group),
-                onLongPress: () => _showConversationActions(group),
+            const SizedBox(height: 12),
+            GlassCard(
+              child: TextField(
+                onChanged: (value) => setState(() => _query = value),
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w400,
+                  height: 1.2,
+                ),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: 'Sohbet ara',
+                  hintStyle: TextStyle(fontSize: 14),
+                  prefixIcon: Icon(CupertinoIcons.search, size: 18),
+                  prefixIconConstraints: BoxConstraints(
+                    minWidth: 34,
+                    minHeight: 34,
+                  ),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                  border: InputBorder.none,
+                ),
               ),
             ),
+            const SizedBox(height: 14),
+            if (_sortedGroups().isEmpty)
+              GlassCard(
+                child: Text(
+                  _query.trim().isNotEmpty
+                      ? 'Filtreye uyan sohbet bulunamadı.'
+                      : 'Henüz sohbet yok.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              )
+            else
+              ..._sortedGroups().map(
+                (group) => _GroupCard(
+                  group: group,
+                  previewText: _conversationPreviewText(group),
+                  onTap: () => _openChat(group),
+                  onLongPress: () => _showConversationActions(group),
+                ),
+              ),
           ],
         ),
         Positioned(
@@ -265,6 +326,37 @@ class _MessagesPageState extends State<MessagesPage> {
         ),
       ],
     );
+  }
+
+  String _conversationPreviewText(GroupItem group) {
+    final lastMessage =
+        (appRepository.conversationMessages[group.name] ?? <ChatMessage>[])
+            .lastOrNull;
+    if (lastMessage == null) {
+      return MockData.conversationLastMessage[group.name] ?? 'Henüz mesaj yok';
+    }
+    if ((lastMessage.message).trim().isNotEmpty) {
+      return lastMessage.message;
+    }
+    final attachment = lastMessage.attachment ?? '';
+    if (attachment.isEmpty) return 'Mesaj';
+    final lower = attachment.toLowerCase();
+    if (lower.endsWith('.mp4') ||
+        lower.endsWith('.mov') ||
+        lower.endsWith('.mkv')) {
+      return 'Video';
+    }
+    if (lower.endsWith('.mp3') ||
+        lower.endsWith('.m4a') ||
+        lower.endsWith('.aac')) {
+      return 'Ses';
+    }
+    if (lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.png')) {
+      return 'Görsel';
+    }
+    return 'Dosya';
   }
 }
 
@@ -304,6 +396,7 @@ class _ConversationSnapshot {
   }
 
   void restore() {
+    MockData.deletedConversationAt.remove(group.name);
     appRepository.groups.insert(0, group);
     appRepository.groupMembers[group.name] = members;
     appRepository.conversationMessages[group.name] = messages;
@@ -325,11 +418,13 @@ class _ConversationSnapshot {
 class _GroupCard extends StatelessWidget {
   const _GroupCard({
     required this.group,
+    required this.previewText,
     required this.onTap,
     required this.onLongPress,
   });
 
   final GroupItem group;
+  final String previewText;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
@@ -344,18 +439,17 @@ class _GroupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final lastMessage =
-        (appRepository.conversationMessages[group.name] ?? <ChatMessage>[])
-            .lastOrNull;
-    final lastMessageText =
-        lastMessage?.message ??
-        MockData.conversationLastMessage[group.name] ??
-        'Henüz mesaj yok';
     final unreadCount = appRepository.unreadConversationCounts[group.name] ?? 0;
     final pinned = MockData.conversationPinned[group.name] ?? false;
+    final activity = MockData.conversationLastActivity[group.name];
+    final activityLabel = activity == null
+        ? ''
+        : TimeOfDay.fromDateTime(
+            DateTime.fromMillisecondsSinceEpoch(activity).toLocal(),
+          ).format(context);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 10),
       child: GlassCard(
         child: InkWell(
           onTap: onTap,
@@ -363,11 +457,11 @@ class _GroupCard extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: 54,
-                height: 54,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(colors: _avatarColors()),
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(15),
                   image:
                       (group.avatarPath != null && group.avatarPath!.isNotEmpty)
                       ? DecorationImage(
@@ -392,18 +486,37 @@ class _GroupCard extends StatelessWidget {
                   children: [
                     Text(
                       group.name,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      lastMessageText,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      previewText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontSize: 13.5,
+                        height: 1.15,
+                      ),
                     ),
                   ],
                 ),
               ),
+              if (activityLabel.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Text(
+                    activityLabel,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(fontSize: 11),
+                  ),
+                ),
               if (unreadCount > 0) ...[
                 TagBadge(
                   label: '$unreadCount',

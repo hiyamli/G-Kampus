@@ -451,6 +451,25 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
   }
 
   Future<void> _leaveGroup() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Gruptan ayrıl'),
+        content: const Text('Bu gruptan ayrılmak istediğine emin misin?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Vazgeç'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Ayrıl'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
     try {
       await SupabaseService.leaveGroup(group);
       if (!mounted) return;

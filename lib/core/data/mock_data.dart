@@ -217,6 +217,8 @@ class MockData {
   static final conversationPinned = <String, bool>{};
   static final conversationLastActivity = <String, int>{};
   static final conversationLastMessage = <String, String>{};
+  static final deletedConversationAt = <String, int>{};
+  static final hiddenMessageIdsByConversation = <String, Set<String>>{};
 
   static final chatMessages = [
     ChatMessage(

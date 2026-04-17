@@ -21,6 +21,9 @@ class SupabaseService {
   static String _tblMenuItems = 'menu_items';
 
   static bool _tableNamesResolved = false;
+  static RealtimeChannel? _conversationChannel;
+  static final StreamController<String> _conversationEventsController =
+      StreamController<String>.broadcast();
 
   static final Map<String, String> _groupIdByName = <String, String>{};
   static final Map<String, String> _studentIdByNumber = <String, String>{};
@@ -37,11 +40,18 @@ class SupabaseService {
 
   static SupabaseClient get client => Supabase.instance.client;
 
+  static Stream<String> get conversationEvents =>
+      _conversationEventsController.stream;
+
   static bool get isAuthenticated => client.auth.currentUser != null;
 
   static String? get currentUserId => client.auth.currentUser?.id;
 
   static void resetAppSessionData() {
+    if (_conversationChannel != null) {
+      client.removeChannel(_conversationChannel!);
+      _conversationChannel = null;
+    }
     MockData.resetStudent();
     MockData.setSchedules(const <ScheduleItem>[]);
     MockData.setAssignments(const <AssignmentItem>[]);
@@ -52,6 +62,8 @@ class SupabaseService {
     MockData.setConversationPinned(const <String, bool>{});
     MockData.setConversationLastActivity(const <String, int>{});
     MockData.setConversationLastMessage(const <String, String>{});
+    MockData.deletedConversationAt.clear();
+    MockData.hiddenMessageIdsByConversation.clear();
     _groupIdByName.clear();
   }
 
@@ -97,6 +109,80 @@ class SupabaseService {
       _safeLoad(_loadMessagesAndUnreadCounts),
       _safeLoad(_loadMenuItems),
     ]);
+    await _safeLoad(ensureConversationRealtime);
+  }
+
+  static Future<void> ensureConversationRealtime() async {
+    if (!isAuthenticated) return;
+    await _ensureTableNamesResolved();
+    if (_conversationChannel != null) return;
+
+    final uid = currentUserId ?? 'anon';
+    final channel = client.channel('dm-events-$uid');
+    channel
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _tblMessages,
+          callback: (payload) => _emitEventFromPayload(payload, _tblMessages),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _tblUnreadCounts,
+          callback: (payload) =>
+              _emitEventFromPayload(payload, _tblUnreadCounts),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _tblGroups,
+          callback: (payload) => _emitEventFromPayload(payload, _tblGroups),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _tblGroupMembers,
+          callback: (payload) =>
+              _emitEventFromPayload(payload, _tblGroupMembers),
+        )
+        .subscribe();
+
+    _conversationChannel = channel;
+  }
+
+  static void _emitEventFromPayload(
+    PostgresChangePayload payload,
+    String table,
+  ) {
+    final dynamic record = payload.newRecord.isNotEmpty
+        ? payload.newRecord
+        : payload.oldRecord;
+    if (record is! Map) {
+      _conversationEventsController.add('*');
+      return;
+    }
+
+    String? groupId;
+    if (table == _tblGroups) {
+      groupId = record['id']?.toString();
+    } else {
+      groupId = record['group_id']?.toString();
+    }
+
+    if (groupId == null || groupId.isEmpty) {
+      _conversationEventsController.add('*');
+      return;
+    }
+    final groupName = _groupNameById(groupId);
+    _conversationEventsController.add(groupName ?? '*');
+  }
+
+  static String? _groupNameById(String groupId) {
+    for (final entry in _groupIdByName.entries) {
+      if (entry.value == groupId) return entry.key;
+    }
+    return null;
   }
 
   static void resetAppProfile() {
@@ -106,10 +192,8 @@ class SupabaseService {
   static Future<void> refreshMessagesData() async {
     if (!isAuthenticated) return;
     await _ensureTableNamesResolved();
-    await Future.wait([
-      _safeLoad(_loadGroupsAndMembers),
-      _safeLoad(_loadMessagesAndUnreadCounts),
-    ]);
+    await _safeLoad(_loadGroupsAndMembers);
+    await _safeLoad(_loadMessagesAndUnreadCounts);
   }
 
   static Future<void> loadMembersForGroup(String groupName) async {
@@ -211,40 +295,89 @@ class SupabaseService {
     _groupIdByName.remove(groupName);
   }
 
-  static Future<void> leaveGroup(GroupItem group) async {
+  static Future<void> deleteConversationForCurrentUser(GroupItem group) async {
     await _ensureTableNamesResolved();
     final userId = currentUserId;
-    final groupName = group.name;
-    final groupId = group.id ?? await _resolveGroupIdByName(groupName);
+    final groupId = group.id ?? await _resolveGroupIdByName(group.name);
+
     if (userId != null && groupId != null) {
-      try {
-        await client.from(_tblMessages).insert({
-          'group_id': groupId,
-          'sender_profile_id': userId,
-          'message': '${MockData.student.name} gruptan ayrıldı.',
-          'time_label': DateTime.now().toIso8601String(),
-          'is_me': false,
-          'is_system': true,
-        });
-      } catch (_) {
-        // If policy blocks, continue leave flow.
-      }
-      try {
-        await client
-            .from(_tblGroupMembers)
-            .delete()
-            .eq('group_id', groupId)
-            .eq('profile_id', userId);
-      } catch (_) {
-        // Fall back to local removal even if backend policy blocks.
-      }
       try {
         await client
             .from(_tblUnreadCounts)
             .delete()
             .eq('group_id', groupId)
             .eq('profile_id', userId);
-      } catch (_) {}
+      } catch (_) {
+        // Ignore unread cleanup errors.
+      }
+    }
+
+    hideConversationLocally(group.name);
+  }
+
+  static Future<void> leaveGroup(GroupItem group) async {
+    await _ensureTableNamesResolved();
+    final userId = currentUserId;
+    final groupName = group.name;
+    final groupId = group.id ?? await _resolveGroupIdByName(groupName);
+    if (userId == null || groupId == null) {
+      throw Exception('Grup bilgisi çözümlenemedi.');
+    }
+
+    if (group.isDirect) {
+      await deleteConversationForCurrentUser(group);
+      return;
+    }
+
+    try {
+      await client.from(_tblMessages).insert({
+        'group_id': groupId,
+        'sender_profile_id': userId,
+        'message': '${MockData.student.name} gruptan ayrıldı.',
+        'time_label': DateTime.now().toIso8601String(),
+        'is_me': false,
+        'is_system': true,
+      });
+    } catch (_) {
+      // System message optional.
+    }
+
+    var deletedWithDirectQuery = true;
+    try {
+      await client
+          .from(_tblGroupMembers)
+          .delete()
+          .eq('group_id', groupId)
+          .eq('profile_id', userId);
+    } on PostgrestException {
+      deletedWithDirectQuery = false;
+    }
+
+    if (!deletedWithDirectQuery) {
+      final rpcSuccess = await _leaveGroupViaRpc(groupId);
+      if (!rpcSuccess) {
+        throw Exception(
+          'Gruptan çıkış izni yok. RLS veya leave_group_secure RPC gerekli.',
+        );
+      }
+    }
+
+    await refreshMessagesData();
+    final stillVisible = MockData.groups.any((item) => item.name == groupName);
+    if (stillVisible) {
+      throw Exception(
+        'Gruptan çıkış başarısız. RLS policy nedeniyle üyelik silinemedi.',
+      );
+    }
+
+    try {
+      await client
+          .from(_tblUnreadCounts)
+          .delete()
+          .eq('group_id', groupId)
+          .eq('profile_id', userId);
+    } catch (_) {
+      // Ignore unread cleanup errors.
     }
 
     MockData.groups.removeWhere((group) => group.name == groupName);
@@ -266,6 +399,12 @@ class SupabaseService {
     MockData.conversationLastActivity.remove(groupName);
     MockData.conversationLastMessage.remove(groupName);
     _groupIdByName.remove(groupName);
+  }
+
+  static void hideConversationLocally(String groupName) {
+    MockData.deletedConversationAt[groupName] =
+        DateTime.now().millisecondsSinceEpoch;
+    removeConversationLocal(groupName);
   }
 
   static Future<void> hardDeleteConversation(GroupItem group) async {
@@ -317,6 +456,146 @@ class SupabaseService {
     removeConversationLocal(group.name);
   }
 
+  static Future<void> deleteMessageForMe({
+    required String groupName,
+    required ChatMessage message,
+  }) async {
+    final id = await _resolveMessageId(groupName: groupName, message: message);
+    if (id == null) {
+      throw Exception('Mesaj kimliği çözümlenemedi.');
+    }
+
+    final hidden = MockData.hiddenMessageIdsByConversation.putIfAbsent(
+      groupName,
+      () => <String>{},
+    );
+    hidden.add(id);
+
+    final existing = List<ChatMessage>.from(
+      MockData.conversationMessages[groupName] ?? [],
+    );
+    existing.removeWhere((item) => item.id == id);
+    MockData.conversationMessages[groupName] = existing;
+  }
+
+  static Future<void> deleteMessageForEveryone({
+    required String groupName,
+    required ChatMessage message,
+  }) async {
+    await _ensureTableNamesResolved();
+    if (!message.isMe) {
+      throw Exception('Sadece kendi mesajlarınızı herkesten silebilirsiniz.');
+    }
+
+    final id = await _resolveMessageId(groupName: groupName, message: message);
+    if (id == null) {
+      throw Exception('Mesaj kimliği çözümlenemedi.');
+    }
+
+    Map<String, dynamic>? updated;
+    try {
+      updated = await client
+          .from(_tblMessages)
+          .update({
+            'message': 'Bu mesaj silindi',
+            'attachment': null,
+            'reply_to': null,
+          })
+          .eq('id', id)
+          .eq('sender_profile_id', currentUserId!)
+          .select('id')
+          .maybeSingle();
+    } on PostgrestException {
+      updated = null;
+    }
+
+    if (updated == null) {
+      final rpcSuccess = await _deleteMessageForEveryoneViaRpc(id);
+      if (!rpcSuccess) {
+        throw Exception(
+          'Mesaj herkesten silinemedi. messages update policy veya delete_message_for_everyone_secure RPC gerekli.',
+        );
+      }
+    }
+
+    final existing = List<ChatMessage>.from(
+      MockData.conversationMessages[groupName] ?? [],
+    );
+    final index = existing.indexWhere((item) => item.id == id);
+    if (index != -1) {
+      existing[index] = existing[index].copyWith(
+        message: 'Bu mesaj silindi',
+        attachment: null,
+        replyTo: null,
+      );
+      MockData.conversationMessages[groupName] = existing;
+      if (index == existing.length - 1) {
+        MockData.conversationLastMessage[groupName] = 'Bu mesaj silindi';
+      }
+    }
+
+    _conversationEventsController.add(groupName);
+  }
+
+  static Future<bool> _leaveGroupViaRpc(String groupId) async {
+    try {
+      final result = await client.rpc(
+        'leave_group_secure',
+        params: {'p_group_id': groupId},
+      );
+      if (result is bool) return result;
+      if (result is num) return result != 0;
+      if (result is String) return result.toLowerCase() == 'true';
+      return result != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> _deleteMessageForEveryoneViaRpc(String messageId) async {
+    try {
+      final result = await client.rpc(
+        'delete_message_for_everyone_secure',
+        params: {'p_message_id': messageId},
+      );
+      if (result is bool) return result;
+      if (result is num) return result != 0;
+      if (result is String) return result.toLowerCase() == 'true';
+      return result != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<String?> _resolveMessageId({
+    required String groupName,
+    required ChatMessage message,
+  }) async {
+    if ((message.id ?? '').isNotEmpty) return message.id;
+    await _ensureTableNamesResolved();
+    final groupId = await _resolveGroupIdByName(groupName);
+    if (groupId == null) return null;
+
+    final rows = await client
+        .from(_tblMessages)
+        .select('id, sender_profile_id, message, time_label')
+        .eq('group_id', groupId)
+        .order('created_at', ascending: false)
+        .limit(100);
+
+    for (final row in rows) {
+      final sameSender =
+          ((row['sender_profile_id'] as String?) == currentUserId) ==
+          message.isMe;
+      final sameMessage =
+          ((row['message'] as String?) ?? '') == message.message;
+      if (!sameSender || !sameMessage) continue;
+      final id = row['id'] as String?;
+      if (id != null && id.isNotEmpty) return id;
+    }
+    return null;
+  }
+
   static void toggleConversationPinned(String groupName) {
     final current = MockData.conversationPinned[groupName] ?? false;
     MockData.conversationPinned[groupName] = !current;
@@ -332,7 +611,7 @@ class SupabaseService {
     final messageRows = await client
         .from(_tblMessages)
         .select(
-          'sender_profile_id, message, time_label, is_me, reply_to, attachment, is_system, created_at',
+          'id, sender_profile_id, message, time_label, is_me, reply_to, attachment, is_system, created_at',
         )
         .eq('group_id', groupId)
         .order('created_at', ascending: true);
@@ -354,22 +633,34 @@ class SupabaseService {
           row['id'] as String: (row['full_name'] as String?) ?? 'Öğrenci',
     };
 
-    final messages = messageRows.map((row) {
-      final senderName =
-          senderNameById[row['sender_profile_id'] as String? ?? ''] ??
-          ((row['sender_profile_id'] as String?) == currentUserId
-              ? MockData.student.name
-              : 'Öğrenci');
-      return ChatMessage(
-        sender: senderName,
-        message: (row['message'] as String?) ?? '',
-        time: _formatTime(row['time_label'] as String?),
-        isMe: (row['sender_profile_id'] as String?) == currentUserId,
-        replyTo: row['reply_to'] as String?,
-        attachment: row['attachment'] as String?,
-        isSystem: (row['is_system'] as bool?) ?? false,
-      );
-    }).toList();
+    final messages = messageRows
+        .map((row) {
+          final senderName =
+              senderNameById[row['sender_profile_id'] as String? ?? ''] ??
+              ((row['sender_profile_id'] as String?) == currentUserId
+                  ? MockData.student.name
+                  : 'Öğrenci');
+          return ChatMessage(
+            id: row['id'] as String?,
+            sender: senderName,
+            message: (row['message'] as String?) ?? '',
+            time: _formatTime(row['time_label'] as String?),
+            isMe: (row['sender_profile_id'] as String?) == currentUserId,
+            replyTo: row['reply_to'] as String?,
+            attachment: row['attachment'] as String?,
+            isSystem: (row['is_system'] as bool?) ?? false,
+            createdAt: DateTime.tryParse((row['created_at'] as String?) ?? ''),
+            sendStatus: ChatSendStatus.sent,
+          );
+        })
+        .where((message) {
+          final hidden = MockData.hiddenMessageIdsByConversation[groupName];
+          if (hidden == null || hidden.isEmpty) return true;
+          final id = message.id;
+          if (id == null || id.isEmpty) return true;
+          return !hidden.contains(id);
+        })
+        .toList();
 
     MockData.conversationMessages[groupName] = messages;
     MockData.conversationLastMessage[groupName] = messages.isNotEmpty
@@ -612,6 +903,7 @@ class SupabaseService {
     });
 
     await _loadMessagesAndUnreadCounts();
+    _conversationEventsController.add(groupName);
   }
 
   static Future<void> forwardMessage({
@@ -729,11 +1021,14 @@ class SupabaseService {
     } else {
       groupId = existingGroup['id'] as String;
       try {
-        await client.from(_tblGroups).update({
-          'name': directName,
-          'avatar_path':
-              directAvatarPath ?? _studentAvatarByNumber[target.number],
-        }).eq('id', groupId);
+        await client
+            .from(_tblGroups)
+            .update({
+              'name': directName,
+              'avatar_path':
+                  directAvatarPath ?? _studentAvatarByNumber[target.number],
+            })
+            .eq('id', groupId);
       } catch (_) {
         // Ignore direct conversation metadata sync errors.
       }
@@ -763,6 +1058,7 @@ class SupabaseService {
     });
 
     await refreshMessagesData();
+    _conversationEventsController.add(directName);
   }
 
   static Future<void> createGroup({
@@ -827,6 +1123,7 @@ class SupabaseService {
     });
 
     await refreshMessagesData();
+    _conversationEventsController.add(name);
   }
 
   static Future<void> _loadCourses() async {
@@ -1107,7 +1404,7 @@ class SupabaseService {
     final messageRows = await client
         .from(_tblMessages)
         .select(
-          'group_id, sender_profile_id, message, time_label, is_me, reply_to, attachment, is_system, created_at',
+          'id, group_id, sender_profile_id, message, time_label, is_me, reply_to, attachment, is_system, created_at',
         )
         .inFilter('group_id', groupIds)
         .order('created_at', ascending: true);
@@ -1150,6 +1447,7 @@ class SupabaseService {
               : 'Öğrenci');
 
       final message = ChatMessage(
+        id: row['id'] as String?,
         sender: senderName,
         message: (row['message'] as String?) ?? '',
         time: _formatTime(row['time_label'] as String?),
@@ -1157,7 +1455,19 @@ class SupabaseService {
         replyTo: row['reply_to'] as String?,
         attachment: row['attachment'] as String?,
         isSystem: (row['is_system'] as bool?) ?? false,
+        createdAt: DateTime.tryParse((row['created_at'] as String?) ?? ''),
+        sendStatus: ChatSendStatus.sent,
       );
+
+      final hiddenMessageIds =
+          MockData.hiddenMessageIdsByConversation[groupName];
+      if (hiddenMessageIds != null &&
+          hiddenMessageIds.isNotEmpty &&
+          message.id != null &&
+          hiddenMessageIds.contains(message.id!)) {
+        continue;
+      }
+
       messagesByGroup
           .putIfAbsent(groupName, () => <ChatMessage>[])
           .add(message);
@@ -1176,6 +1486,31 @@ class SupabaseService {
     MockData.setConversationLastActivity(lastActivityByGroup);
     MockData.setConversationLastMessage(lastMessageByGroup);
 
+    if (MockData.deletedConversationAt.isNotEmpty) {
+      final toHide = <String>[];
+      for (final entry in MockData.deletedConversationAt.entries) {
+        final latest = lastActivityByGroup[entry.key] ?? 0;
+        if (latest > entry.value) {
+          continue;
+        }
+        toHide.add(entry.key);
+      }
+
+      for (final name in toHide) {
+        MockData.groups.removeWhere((group) => group.name == name);
+        MockData.groupMembers.remove(name);
+        MockData.conversationMessages.remove(name);
+        MockData.unreadConversationCounts.remove(name);
+        MockData.conversationPinned.remove(name);
+        MockData.conversationLastActivity.remove(name);
+        MockData.conversationLastMessage.remove(name);
+      }
+
+      MockData.deletedConversationAt.removeWhere(
+        (name, hiddenAt) => (lastActivityByGroup[name] ?? 0) > hiddenAt,
+      );
+    }
+
     final unreadRows = await client
         .from(_tblUnreadCounts)
         .select('group_id, unread_count')
@@ -1192,6 +1527,7 @@ class SupabaseService {
           )
           .key;
       if (groupName.isNotEmpty) {
+        if (MockData.deletedConversationAt.containsKey(groupName)) continue;
         unreadByName[groupName] = (row['unread_count'] as int?) ?? 0;
       }
     }
